@@ -1224,6 +1224,26 @@ function gReduce(S,A){
   return S;
 }
 
+// ── ONLINE: perspective + cfg helpers ─────────────────────────
+// Rotate state so render position 0 = my actual seat (bottom). Engine always
+// uses real seats; this is render-only. Opponents already render as card backs.
+function permuteState(S,mySeat){
+  if(!S||!S.hands||!mySeat)return S;
+  const m=mySeat,idx=p=>(m+p)%4,inv=a=>(a-m+4)%4;
+  const pm=arr=>arr?[0,1,2,3].map(p=>arr[idx(p)]):arr;
+  return {...S,
+    hands:pm(S.hands),wonCards:pm(S.wonCards),wonTricks:pm(S.wonTricks||[0,0,0,0]),totals:pm(S.totals),
+    curIdx:inv(S.curIdx),leadIdx:inv(S.leadIdx),
+    trick:(S.trick||[]).map(t=>({...t,playerIdx:inv(t.playerIdx)})),
+    roundScores:pm(S.roundScores),lastRoundScores:pm(S.lastRoundScores)};
+}
+function seatsToCfg(seats){
+  return {players:seats.map(s=>s.type==="bot"
+      ?{name:"Bot",isBot:true,botLevel:s.level||2}
+      :{name:s.name||"?",isBot:false,botLevel:0}),
+    endMode:"8games",threshold:300,numGames:8,showSec:1.4};
+}
+
 // ── GAME COMPONENT ─────────────────────────────────────────────
 function HandCards({hands0,ls,trick,curIdx,phase,selected,ap}){
   const cards=[...hands0].sort((a,b)=>{const so=["♠","♥","♦","♣"];const si=so.indexOf(a.suit)-so.indexOf(b.suit);return si||RO[a.rank]-RO[b.rank];});
@@ -1260,8 +1280,11 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap}){
   );
 }
 
-function Game({cfg,lang,setLang}){
-  const sRef=useRef(mkRound(0,[0,0,0,0],1));
+function Game({cfg,lang,setLang,net,onExit}){
+  const mySeat=net?net.mySeat:0;
+  const isClient=!!(net&&net.role==="client");
+  const isHost=!!(net&&net.role==="host");
+  const sRef=useRef(isClient?{phase:"waiting",hands:null}:mkRound(0,[0,0,0,0],1));
   const [showHist,setShowHist]=useState(false);
   const [copyMsg,setCopyMsg]=useState(false);
   const [aiThinking,setAiThinking]=useState(false);
@@ -1275,10 +1298,12 @@ function Game({cfg,lang,setLang}){
   function ap(a){sRef.current=gReduce(sRef.current,a);rd();}
 
   useEffect(()=>{
+    if(isClient)return; // client waits for host frames; engine runs on host/local
     ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});
   },[]);
 
   useEffect(()=>{
+    if(isClient)return;
     const S=sRef.current;
     if(!S||!S.hands||S.phase!=="playing")return;
     // Don't let bot fire until game is properly initialized (gameNum matches)
@@ -1313,6 +1338,7 @@ function Game({cfg,lang,setLang}){
   // This prevents re-scheduling on every render
   // Dedicated shuffle effect: fires when gameNum changes
   useEffect(()=>{
+    if(isClient)return;
     const S=sRef.current;
     if(!S||!S.hands)return;
     const gn=S.gameNum||1;
@@ -1335,6 +1361,7 @@ function Game({cfg,lang,setLang}){
   const scheduledPhase=useRef("");
 
   useEffect(()=>{
+    if(isClient)return;
     const S=sRef.current;
     if(!S) return;
     const phase=S.phase;
@@ -1407,17 +1434,60 @@ function Game({cfg,lang,setLang}){
 
   function humanPlay(){
     const S=sRef.current;
-    if(!S||S.phase!=="playing"||S.curIdx!==0)return;
-    if(S.selected===null){ap({type:"ERR",msg:"เลือกไพ่ก่อน"});return;}
-    const card=S.hands[0][S.selected];
+    if(!S||S.phase!=="playing"||S.curIdx!==mySeat)return;
+    if(S.selected===null||S.selected===undefined){ap({type:"ERR",msg:lang==="th"?"เลือกไพ่ก่อน":"Select a card"});return;}
+    const card=S.hands[mySeat][S.selected];
     if(!card)return;
     const ls=S.trick.length?S.trick[0].card.suit:null;
-    if(!getValid(S.hands[0],ls,S.trick).some(c=>c.key===card.key)){ap({type:"ERR",msg:"ไพ่นี้เล่นไม่ได้"});return;}
+    if(!getValid(S.hands[mySeat],ls,S.trick).some(c=>c.key===card.key)){ap({type:"ERR",msg:lang==="th"?"ไพ่นี้เล่นไม่ได้":"Invalid card"});return;}
+    if(isClient){net.send("play",{seat:mySeat,cardKey:card.key});sRef.current={...S,selected:null};rd();return;}
     ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
   }
 
-  const S=sRef.current;
-  if(!S||!S.hands)return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#1e3a5f"}}>Loading…</div>;
+  // HOST: apply a move (or restart) received from a remote human seat
+  function applyRemoteMsg(p){
+    if(!p)return;
+    if(p.type==="again"){
+      const S=sRef.current;if(!S||!S.gameOver)return;
+      bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;
+      ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});return;
+    }
+    const S=sRef.current;
+    if(!S||S.phase!=="playing"||S.curIdx!==p.seat)return;
+    const card=S.hands[p.seat].find(c=>c.key===p.cardKey);
+    if(!card)return;
+    const ls=S.trick.length?S.trick[0].card.suit:null;
+    if(!getValid(S.hands[p.seat],ls,S.trick).some(c=>c.key===card.key))return;
+    ap({type:"PLAY",card,names:cfg.players.map(x=>x.name)});
+  }
+  // CLIENT: render an authoritative frame from the host
+  function applyFrame(p){
+    if(!p||!p.S)return;
+    const prev=sRef.current;
+    const keepSel=(prev&&p.S.curIdx===mySeat)?prev.selected:null;
+    sRef.current={...p.S,selected:keepSel};
+    rd();
+  }
+  // HOST: broadcast full state whenever it changes
+  const lastSent=useRef("");
+  useEffect(()=>{
+    if(!isHost)return;
+    const S=sRef.current;if(!S||!S.hands)return;
+    const key=JSON.stringify(S);
+    if(key===lastSent.current)return;
+    lastSent.current=key;
+    net.send("state",{S});
+  });
+  // bind network handlers once
+  useEffect(()=>{
+    if(isHost&&net.bindMsg)net.bindMsg(applyRemoteMsg);
+    if(isClient&&net.bindState)net.bindState(applyFrame);
+  },[]);
+
+  const Sreal=sRef.current;
+  if(!Sreal||!Sreal.hands)return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#1e3a5f"}}>{isClient?(lang==="th"?"รอโฮสต์เริ่ม…":"Waiting for host…"):"Loading…"}</div>;
+  const S=mySeat===0?Sreal:permuteState(Sreal,mySeat);
+  const pl=mySeat===0?cfg.players:[0,1,2,3].map(p=>cfg.players[(mySeat+p)%4]);
   if(S.gameOver){
     if(S.lastRoundScores&&lastRecordedGame.current!==S.gameNum){
       lastRecordedGame.current=S.gameNum;
@@ -1425,11 +1495,10 @@ function Game({cfg,lang,setLang}){
       playApplause();
     }
     const hd=[...histRef.current];
-    return <GameOver players={cfg.players} totals={S.totals} lang={lang} history={hd} onAgain={()=>{bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
   }
 
   const L=lang==="th";
-  const pl=cfg.players;
   const ls=S.trick.length?S.trick[0].card.suit:null;
   // cgS = current game score
   // -50 if no score cards won (even if won tricks with no point cards)
@@ -1772,6 +1841,13 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
   const [sbKey,setSbKey]=useState(SUPABASE_ANON_KEY);
   const [conn,setConn]=useState("idle"); // idle|connecting|connected|error|mock
   const [connErr,setConnErr]=useState("");
+  // game phase
+  const [started,setStarted]=useState(false);
+  const [gameCfg,setGameCfg]=useState(null);
+  const [gameNet,setGameNet]=useState(null);
+  const gameOnState=useRef(null);
+  const gameOnPlay=useRef(null);
+  const frameBuf=useRef(null);
   const isHost=hostId===selfId;
   const chatBox=useRef(null);
 
@@ -1827,6 +1903,17 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
           return nx;
         });
       }
+    } else if(m.type==="start"){
+      const seatsX=m.payload.seats;
+      const meSeat=seatsX.findIndex(s=>s.type==="human"&&s.id===selfId);
+      if(meSeat<0)return;
+      setGameCfg(seatsToCfg(seatsX));
+      setGameNet({role:"client",mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}}});
+      setStarted(true);
+    } else if(m.type==="state"){
+      if(gameOnState.current)gameOnState.current(m.payload);else frameBuf.current=m.payload;
+    } else if(m.type==="play"||m.type==="again"){
+      if(gameOnPlay.current)gameOnPlay.current(m.type==="again"?{type:"again"}:m.payload);
     } else if(meHost&&(m.type==="takeSeat"||m.type==="leaveSeat")){
       mutateSeatAsHost(m.type,m.from,m.payload);
     }
@@ -1842,6 +1929,17 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
       setConn("mock");
       tx.current=makeMockTransport({room:roomCode,selfId,onEvent:handleEvent,onReady:onReadyCb});
     }
+  }
+
+  function startGame(){
+    const sx=ref.current.seats;
+    if(!sx.every(s=>s.type!=="empty"))return;
+    const seatIdx=sx.findIndex(s=>s.type==="human"&&s.id===selfId);
+    if(seatIdx<0)return;
+    if(tx.current)tx.current.send("start",{seats:sx,hostId:selfId});
+    setGameCfg(seatsToCfg(sx));
+    setGameNet({role:"host",mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;}});
+    setStarted(true);
   }
 
   function createRoom(){
@@ -1894,6 +1992,9 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
   const allFilled=seats.every(s=>s.type!=="empty");
   const canStart=isHost&&allFilled&&seatedHumans>=1&&(connKind==="mock"||conn==="connected");
   const mySeatIdx=seats.findIndex(s=>s.type==="human"&&s.id===selfId);
+
+  if(started&&gameCfg&&gameNet)
+    return <Game cfg={gameCfg} lang={lang} setLang={setLang} net={gameNet} onExit={()=>setStarted(false)}/>;
 
   if(phase==="entry"){
     return (
@@ -1999,7 +2100,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
         </div>
 
         {isHost
-          ? <button onClick={()=>{if(canStart)onStartGame({room,seats,members,selfId});}} disabled={!canStart} style={{...OBTN,opacity:canStart?1:0.5,cursor:canStart?"pointer":"default"}}>{L?"เริ่มเกม!":"Start Game!"}{allFilled?"":" ("+(L?"ที่นั่งยังไม่เต็ม":"seats not full")+")"}</button>
+          ? <button onClick={startGame} disabled={!canStart} style={{...OBTN,opacity:canStart?1:0.5,cursor:canStart?"pointer":"default"}}>{L?"เริ่มเกม!":"Start Game!"}{allFilled?"":" ("+(L?"ที่นั่งยังไม่เต็ม":"seats not full")+")"}</button>
           : <div style={{textAlign:"center",fontSize:13,color:"#6b7280",padding:10}}>{L?"รอโฮสต์เริ่มเกม…":"Waiting for host to start…"}</div>}
       </div>
     </div>
