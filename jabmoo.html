@@ -11,9 +11,6 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0f2027;overflow:hidden;height:100vh;width:100vw;}
-@media (orientation:portrait){
-  body::before{content:"🔄 หมุนมือถือแนวนอนเพื่อประสบการณ์ที่ดีที่สุด";position:fixed;inset:0;background:#0f2027;color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:9999;padding:2rem;text-align:center;}
-}
 input,select,button{font-family:inherit;}
 select{appearance:auto;}
 .hand-scroll{display:flex;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
@@ -1000,7 +997,7 @@ function Setup({onStart,onOnline,lang,setLang}){
     });
   }
   return (
-    <div style={{minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"}}>
+    <div style={{height:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"}}>
       <div style={{width:"100%",maxWidth:440,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",marginTop:"0.5rem",marginBottom:"0.5rem"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
           <div style={{fontSize:24,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif"}}>🐷 {L?"จับหมู":"Jab Moo"}</div>
@@ -1563,6 +1560,14 @@ function Game({cfg,lang,setLang,net,onExit}){
   }
   function openChat(){setChatOpen(true);setUnread(0);}
 
+  // ── ORIENTATION (in-game only rotate hint) ───────────────────
+  const [portrait,setPortrait]=useState(typeof window!=="undefined"&&window.innerHeight>window.innerWidth);
+  useEffect(()=>{
+    const h=()=>setPortrait(window.innerHeight>window.innerWidth);
+    window.addEventListener("resize",h);window.addEventListener("orientationchange",h);
+    return()=>{window.removeEventListener("resize",h);window.removeEventListener("orientationchange",h);};
+  },[]);
+
   // ── FULLSCREEN ───────────────────────────────────────────────
   function toggleFS(){
     const el=document.documentElement;
@@ -1771,6 +1776,15 @@ function Game({cfg,lang,setLang,net,onExit}){
         </div>
       </div>
 
+      {/* ── PORTRAIT ROTATE HINT (in-game only) ── */}
+      {portrait&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,32,39,0.97)",zIndex:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:"2rem",textAlign:"center"}}>
+          <div style={{fontSize:48}}>🔄</div>
+          <div style={{fontSize:15,color:"#e2e8f0",fontWeight:600,lineHeight:1.5}}>{L?"หมุนมือถือเป็นแนวนอนเพื่อเล่น":"Rotate your phone to landscape to play"}</div>
+          <button onClick={fsToggle} style={{padding:"10px 20px",background:"#2563eb",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>⛶ {L?"เต็มจอ + ล็อกแนวนอน":"Fullscreen + lock landscape"}</button>
+        </div>
+      )}
+
       {/* ── SCORE HISTORY MODAL ── */}
       {showHist&&(
         <div onClick={()=>setShowHist(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
@@ -1814,7 +1828,16 @@ function Game({cfg,lang,setLang,net,onExit}){
 }
 
 // ── ONLINE: SHARED STYLES ──────────────────────────────────────
-const OWRAP={minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"};
+function fsToggle(){
+  try{
+    if(!document.fullscreenElement){
+      const el=document.documentElement;
+      (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el);
+      if(screen.orientation&&screen.orientation.lock)screen.orientation.lock("landscape").catch(()=>{});
+    }else{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}
+  }catch(e){}
+}
+const OWRAP={height:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"};
 const OCARD={width:"100%",maxWidth:440,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",marginTop:"0.5rem",marginBottom:"0.5rem"};
 const OHEAD={display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"};
 const OTITLE={fontSize:22,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif"};
@@ -2083,7 +2106,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
         <div style={OCARD}>
           <div style={OHEAD}>
             <div style={OTITLE}>🐷 {L?"เล่นกับเพื่อน":"Play with friends"}</div>
-            <button onClick={onBack} style={SS}>{L?"กลับ":"Back"}</button>
+            <div style={{display:"flex",gap:6}}><button onClick={fsToggle} style={SS}>⛶</button><button onClick={onBack} style={SS}>{L?"กลับ":"Back"}</button></div>
           </div>
           <div style={{fontSize:13,color:"#6b7280",marginBottom:10}}>{L?"ใส่ชื่อ แล้วสร้างห้องใหม่ หรือเข้าห้องด้วยโค้ด":"Enter a name, then create a room or join with a code"}</div>
           <input value={name} onChange={e=>setName(e.target.value)} placeholder={L?"ชื่อของคุณ":"Your name"} style={{...OINP,marginBottom:12}}/>
@@ -2131,6 +2154,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
           <div style={OTITLE}>🐷 {L?"ห้องเล่น":"Lobby"}</div>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
             <span style={{fontSize:11,fontWeight:700,color:connBadge.c,background:connBadge.bg,borderRadius:6,padding:"3px 8px"}}>{connBadge.t}</span>
+            <button onClick={fsToggle} style={SS}>⛶</button>
             <button onClick={onBack} style={SS}>{L?"ออก":"Leave"}</button>
           </div>
         </div>
