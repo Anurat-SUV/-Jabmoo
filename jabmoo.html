@@ -7,10 +7,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-<meta name="theme-color" content="#0f2027">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0f2027;overflow:hidden;height:100vh;width:100vw;}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f0f2f5;overflow:hidden;height:100vh;width:100vw;}
 input,select,button{font-family:inherit;}
 select{appearance:auto;}
 .hand-scroll{display:flex;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
@@ -354,8 +353,6 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
   const qOut=played.some(c=>c.suit==="♠"&&c.rank==="Q");
   const jOut=played.some(c=>c.suit==="♦"&&c.rank==="J");
   const qInHand=hand.some(c=>c.suit==="♠"&&c.rank==="Q");
-  const tenCOut=played.some(c=>c.suit==="♣"&&c.rank==="10");
-  const tenCInHand=hand.some(c=>c.suit==="♣"&&c.rank==="10");
   const pos=tc.length;
   const hasJD=hand.some(c=>c.suit==="♦"&&c.rank==="J");
   const hasOtherD=hand.some(c=>c.suit==="♦"&&c.rank!=="J");
@@ -376,12 +373,9 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
 
   // ── LEAD ──────────────────────────────────────────────────────
   if(pos===0){
-    // A high spade (A/K) is dangerous to lead when Q♠ is still out and not ours:
-    // we'd win the trick and an opponent could dump Q♠ on us (-100).
-    const dangerHighSpade=c=>!qOut&&!qInHand&&c.suit==="♠"&&(c.rank==="K"||c.rank==="A");
     // Critical slam: lead high non-heart to control lead
     if(criticalSlam&&slammerIdx!==myIdx){
-      const highCtrl=vld.filter(c=>c.suit!=="♥"&&!(c.suit==="♠"&&c.rank==="Q")&&!isSC(c)&&!dangerHighSpade(c))
+      const highCtrl=vld.filter(c=>c.suit!=="♥"&&!(c.suit==="♠"&&c.rank==="Q")&&!isSC(c))
         .sort((a,b)=>RO[b.rank]-RO[a.rank]);
       if(highCtrl.length)return highCtrl[0];
     }
@@ -396,7 +390,7 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
 
     // Moderate slam: lead high non-heart
     if(slamThreat&&!criticalSlam){
-      const highNonHeart=vld.filter(c=>c.suit!=="♥"&&!(c.suit==="♠"&&c.rank==="Q")&&!isSC(c)&&!dangerHighSpade(c))
+      const highNonHeart=vld.filter(c=>c.suit!=="♥"&&!(c.suit==="♠"&&c.rank==="Q")&&!isSC(c))
         .sort((a,b)=>RO[b.rank]-RO[a.rank]);
       if(highNonHeart.length)return highNonHeart[0];
     }
@@ -423,8 +417,6 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       if(c.suit==="♠"&&c.rank==="Q")return false;
       // Never lead K♠ or A♠ if Q♠ not out and Q♠ not in our hand
       if(!qOut&&!qInHand&&c.suit==="♠"&&(c.rank==="K"||c.rank==="A"))return false;
-      // Never lead K♣ or A♣ if 10♣ not out and not in our hand (risk catching the ×2)
-      if(!tenCOut&&!tenCInHand&&c.suit==="♣"&&(c.rank==="K"||c.rank==="A"))return false;
       if(isSC(c)&&!(c.suit==="♦"&&c.rank==="J"))return false;
       // Rule 3: don't lead J♦ unless safe
       if(hasJD&&!jOut&&c.suit==="♦"&&c.rank==="J"){
@@ -475,9 +467,8 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       if(kd)return kd;
     }
 
-    // Prefer leading LOW non-score cards (keep high cards; let opponents flush dangers).
-    // From the shortest suit (to create a void for dumping later), play the lowest.
-    const midPool=pool.filter(c=>!isSC(c)&&c.suit!=="♥"&&RO[c.rank]<=9);
+    // Prefer leading mid-rank (5-9) non-score cards from shortest suit
+    const midPool=pool.filter(c=>!isSC(c)&&c.suit!=="♥"&&RO[c.rank]>=5&&RO[c.rank]<=9);
     if(midPool.length){
       const sc2={};
       for(const c of midPool)sc2[c.suit]=(sc2[c.suit]||0)+1;
@@ -914,14 +905,13 @@ function PigSVG({w,h}){
   );
 }
 
-function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
+function CF({card,sel,onClick,dis,w,h,lead,trick}){
   w=w||52; h=h||74; lead=lead||false;
   const qS=card.suit==="♠"&&card.rank==="Q";
   const isJD=card.suit==="♦"&&card.rank==="J";
   const isTC=card.suit==="♣"&&card.rank==="10";
   const rankFs=Math.round(h*0.24);
   const suitFs=Math.round(h*0.38);
-  const cIdx=Math.round(h*0.20); // corner index (≈80% of center rank)
   const border=sel?"3px solid #3b82f6":lead?"3px double #d4a017":"1.5px solid #d1d5db";
   const shadow=sel?"0 5px 16px rgba(59,130,246,0.4)":lead?"0 0 8px rgba(212,160,23,0.5)":"0 2px 5px rgba(0,0,0,0.15)";
   return (
@@ -935,15 +925,11 @@ function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
         ? <img src={IMG_QS} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="Q♠"/>
         : isJD
           ? <img src={IMG_JD} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="J♦"/>
-          : !corner && (<>
+          : (<>
               <div style={{fontSize:rankFs,fontWeight:800,color:SC(card.suit),lineHeight:1}}>{card.rank}</div>
               <div style={{fontSize:trick?Math.round(h*0.50):suitFs,color:SC(card.suit),lineHeight:1}}>{card.suit}</div>
             </>)
       }
-      {corner && <div style={{position:"absolute",top:2,left:3,display:"flex",flexDirection:"column",alignItems:"center",lineHeight:0.9,zIndex:6,background:(qS||isJD)?"rgba(255,255,255,0.9)":"transparent",borderRadius:3,padding:(qS||isJD)?"1px 2px":0}}>
-        <span style={{fontSize:cIdx,fontWeight:800,color:SC(card.suit)}}>{card.rank}</span>
-        <span style={{fontSize:cIdx,color:SC(card.suit)}}>{card.suit}</span>
-      </div>}
       {isTC && <div style={{position:"absolute",top:-8,right:-5,background:"#fbbf24",color:"#78350f",fontSize:9,fontWeight:800,borderRadius:4,padding:"1px 4px",zIndex:11}}>×2</div>}
     </div>
   );
@@ -1010,7 +996,7 @@ function Setup({onStart,onOnline,lang,setLang}){
     });
   }
   return (
-    <div style={{height:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"}}>
+    <div style={{minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"}}>
       <div style={{width:"100%",maxWidth:440,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",marginTop:"0.5rem",marginBottom:"0.5rem"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
           <div style={{fontSize:24,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif"}}>🐷 {L?"จับหมู":"Jab Moo"}</div>
@@ -1259,31 +1245,34 @@ function seatsToCfg(seats){
 }
 
 // ── GAME COMPONENT ─────────────────────────────────────────────
-function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail}){
+function HandCards({hands0,ls,trick,curIdx,phase,selected,ap}){
   const cards=[...hands0].sort((a,b)=>{const so=["♠","♥","♦","♣"];const si=so.indexOf(a.suit)-so.indexOf(b.suit);return si||RO[a.rank]-RO[b.rank];});
   const n=cards.length;
-  const W=cw||48,H=ch||68;
-  if(n===0)return <div style={{height:H}}/>;
-  const aw=avail||((typeof window!=="undefined"?window.innerWidth:375)-16);
+  if(n===0)return <div style={{height:68,marginBottom:7}}/>;
+  const vw2=(typeof window!=="undefined"?window.innerWidth:375);
+  const sf2=Math.min(Math.max(vw2/375,1.0),2.2);
+  const W=Math.round(48*sf2),H=Math.round(68*sf2);
+  const avail=(typeof window!=="undefined"?window.innerWidth:375)-16;
+  // If cards fit without overlap → center them, no overlap
   const totalW=n*W;
-  const needOverlap=totalW>aw;
-  let ov=needOverlap?Math.round((n*W-aw)/(n-1)):0;
-  const maxOv=Math.round(W*0.78);
-  let scroll=false;
-  if(ov>maxOv){ov=maxOv;scroll=true;} // even max overlap won't fit → allow horizontal scroll
-  const justify=(needOverlap||scroll)?"flex-start":"center";
+  const needOverlap=totalW>avail;
+  const ov=needOverlap?Math.min(Math.round(W*0.7),Math.max(0,Math.round((n*W-avail)/(n-1)))):0;
+  const justify=needOverlap?"flex-start":"center";
+  // Build a set of valid card keys for current selection
+  // Use key-based selection to avoid stale index issues after cards are removed
   const selectedCard=selected!==null&&selected!==undefined?hands0[selected]:null;
   return (
-    <div className={scroll?"hand-scroll":""} style={{display:"flex",width:"100%",justifyContent:justify,paddingBottom:2,paddingTop:14,boxSizing:"border-box",overflowX:scroll?"auto":"visible"}}>
+    <div style={{display:"flex",width:"100%",justifyContent:justify,marginBottom:7,paddingBottom:2,paddingLeft:8,paddingRight:8,boxSizing:"border-box"}}>
       {cards.map((card,idx)=>{
         const vld=getValid(hands0,ls,trick);
         const ok=vld.some(c=>c.key===card.key);
         const myTurn=curIdx===0&&phase==="playing";
         const oi=hands0.findIndex(c=>c.key===card.key);
+        // Use key-based comparison to prevent stale index from selecting wrong card
         const isSel=selectedCard&&selectedCard.key===card.key&&selected===oi;
         return (
-          <div key={card.key} style={{marginLeft:idx>0?-ov:0,zIndex:isSel?20:idx,flexShrink:0}}>
-            <CF card={card} sel={isSel} onClick={()=>{if(myTurn)ap({type:"SEL",val:isSel?null:oi});}} dis={!myTurn||!ok} w={W} h={H} corner={true}/>
+          <div key={card.key} style={{marginLeft:idx>0?-ov:0,zIndex:isSel?10:idx,flexShrink:0}}>
+            <CF card={card} sel={isSel} onClick={()=>{if(myTurn)ap({type:"SEL",val:isSel?null:oi});}} dis={!myTurn||!ok} w={W} h={H}/>
           </div>
         );
       })}
@@ -1518,315 +1507,227 @@ function Game({cfg,lang,setLang,net,onExit}){
     if(w.length===0) return -50;  // no score cards won → -50
     return calcScore(w,wt[i]);
   });
-  // ── LANDSCAPE LAYOUT CONSTANTS ──────────────────────────────
-  const vw=(typeof window!=="undefined"?window.innerWidth:667);
-  const vh=(typeof window!=="undefined"?window.innerHeight:375);
-  // card sizes — base on vh (shorter side in landscape)
-  const sf=Math.min(Math.max(vh/375,0.7),1.6);
-  const tW=Math.round(38*sf), tH=Math.round(54*sf);
-  const PNL="rgba(255,255,255,0.92)";
+  // Responsive card sizes based on viewport
+  const vw=(typeof window!=="undefined"?window.innerWidth:375);
+  const vh=(typeof window!=="undefined"?window.innerHeight:667);
+  const shortSide=Math.min(vw,vh);
+  // Scale factor: base design was ~375px wide
+  const sf=Math.min(Math.max(shortSide/375,1.0),2.2);
+  const tW=Math.round(42*sf), tH=Math.round(60*sf); // trick area cards
+  const PNL="rgba(255,255,255,0.88)";
   const BRD="rgba(0,0,0,0.08)";
   const TXT="rgba(30,30,60,0.85)";
   const TXT2="rgba(30,30,60,0.45)";
-  const GREEN="linear-gradient(135deg,#1e6b40,#2a8f55,#1e6b40)";
-  // trick area absolute positions (relative to trick container)
   const SP=[
-    {bottom:4,left:"50%",transform:"translateX(-50%)"},   // 0 bottom (me)
-    {right:4,top:"50%",transform:"translateY(-50%)"},     // 1 right
-    {top:4,left:"50%",transform:"translateX(-50%)"},      // 2 top
-    {left:4,top:"50%",transform:"translateY(-50%)"},      // 3 left
+    {bottom:"0%",left:"50%",transform:"translateX(-50%)"},   // bottom (you)
+    {right:"0%",top:"50%",transform:"translateY(-50%)"},     // right
+    {top:"0%",left:"50%",transform:"translateX(-50%)"},      // top
+    {left:"0%",top:"50%",transform:"translateY(-50%)"},      // left
   ];
   const title=L?"จับหมู":"Jab Moo";
+  const round=L?"เกม":"Game";
+  const trick=L?"ตา":"Trick";
+  const last=L?"สุดท้าย!":"Last!";
   const yourTurn=L?"ถึงตาคุณ!":"Your turn!";
   const wait=L?"รอ":"Wait";
   const playTxt=L?"เล่น":"Play";
+  const cancelTxt=L?"ยกเลิก":"Cancel";
   const totalTxt=L?"รวม":"Total";
-  const curTxt=L?"รอบนี้":"Now";
-
-  // ── IN-GAME CHAT STATE ───────────────────────────────────────
-  // We piggyback on net.send/bindMsg for chat; local games show no chat panel
-  const [chatOpen,setChatOpen]=useState(false);
-  const [chatMsgs,setChatMsgs]=useState([]);
-  const [chatIn,setChatIn]=useState("");
-  const [unread,setUnread]=useState(0);
-  const chatEndRef=useRef(null);
-  const myName=net?cfg.players[mySeat].name:(L?"คุณ":"You");
-  const myId=net?net.mySeat:"local";
-  useEffect(()=>{if(chatEndRef.current)chatEndRef.current.scrollIntoView({behavior:"smooth"});},[chatMsgs]);
-  // hook in-game chat into network
-  useEffect(()=>{
-    if(!net||!net.bindChat)return;
-    net.bindChat((m)=>{
-      setChatMsgs(prev=>[...prev,m]);
-      setChatOpen(o=>{if(!o)setUnread(u=>u+1);return o;});
-    });
-  },[]);
-  function sendChat(){
-    const t=chatIn.trim();if(!t)return;
-    const m={id:myId,name:myName,text:t,ts:Date.now()};
-    setChatMsgs(prev=>[...prev,m]);
-    if(net&&net.sendChat)net.sendChat(m);
-    setChatIn("");
-  }
-  function openChat(){setChatOpen(true);setUnread(0);}
-
-  // ── ORIENTATION (in-game only rotate hint) ───────────────────
-  const [portrait,setPortrait]=useState(typeof window!=="undefined"&&window.innerHeight>window.innerWidth);
-  useEffect(()=>{
-    const h=()=>setPortrait(window.innerHeight>window.innerWidth);
-    window.addEventListener("resize",h);window.addEventListener("orientationchange",h);
-    return()=>{window.removeEventListener("resize",h);window.removeEventListener("orientationchange",h);};
-  },[]);
-
-  // ── FULLSCREEN ───────────────────────────────────────────────
-  function toggleFS(){fsToggle();}
-  const fsDone=useRef(false);
-  function tryAutoFS(){if(fsDone.current)return;fsDone.current=true;fsToggle();}
-
-  // ── SCORE PANEL (left column) ────────────────────────────────
-  function ScoreCol(){
-    return (
-      <div style={{display:"flex",flexDirection:"column",gap:2,padding:"2px 0"}}>
-        {pl.map((p,i)=>(
-          <div key={i} style={{background:i===S.curIdx?"#eff6ff":"rgba(255,255,255,0.6)",borderRadius:6,padding:"3px 5px",border:i===S.curIdx?"1px solid #bfdbfe":"1px solid transparent"}}>
-            <div style={{fontSize:10,fontWeight:700,color:i===S.curIdx?"#1d4ed8":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:56}}>{p.name}{i===0?" ★":""}</div>
-            <div style={{display:"flex",gap:3}}>
-              <span style={{fontSize:11,fontWeight:800,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</span>
-              <span style={{fontSize:9,color:"#9ca3af",alignSelf:"center"}}>{cgS[i]>0?"+":""}{cgS[i]}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // ── OPPONENT CARD BACK ROW ───────────────────────────────────
-  function OppCards({count,rot,max}){
-    const n=Math.min(count,max||13);
-    const ov=n>6?Math.round((n*Math.round(20*sf)-Math.round(60*sf))/(n-1)):0;
-    return (
-      <div style={{display:"flex",flexDirection:rot?"column":"row",alignItems:"center",overflow:"hidden"}}>
-        {Array(n).fill(0).map((_,i)=>(
-          <div key={i} style={rot?{marginTop:i>0?-ov:0}:{marginLeft:i>0?-ov:0}}>
-            <CB w={Math.round(18*sf)} h={Math.round(26*sf)} rot={rot?90:0}/>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // ── ROUND SUMMARY OVERLAY ────────────────────────────────────
-  function RoundSummary(){
-    if(S.phase!=="roundSummary"||!S.roundScores)return null;
-    return (
-      <div style={{position:"absolute",inset:0,zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridTemplateRows:"1fr 1fr 1fr",gap:5,width:"80%",height:"80%",maxWidth:240,maxHeight:180}}>
-          {Array(9).fill(null).map((_,idx)=>{
-            const row=Math.floor(idx/3),col=idx%3;
-            let pi=-1;
-            if(row===0&&col===1)pi=2;
-            if(row===1&&col===0)pi=3;
-            if(row===1&&col===2)pi=1;
-            if(row===2&&col===1)pi=0;
-            if(pi===-1)return <div key={idx}/>;
-            const sc=S.roundScores[pi];
-            return(
-              <div key={idx} style={{background:"rgba(255,255,255,0.96)",borderRadius:8,padding:"4px 3px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>
-                <div style={{fontSize:9,fontWeight:700,color:"#374151",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%"}}>{pl[pi].name}</div>
-                <div style={{fontSize:20,fontWeight:900,color:sc>0?"#059669":sc<0?"#dc2626":"#6b7280",lineHeight:1}}>{sc>0?"+":""}{sc}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  const curTxt=L?"เกมนี้":"Now";
 
   return (
-    <div onPointerDown={tryAutoFS} style={{width:"100vw",height:"100vh",background:"#0f2027",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
-
-      {/* ── HEADER ── */}
-      <div style={{height:32,flexShrink:0,background:"rgba(15,32,39,0.97)",display:"flex",alignItems:"center",paddingLeft:8,paddingRight:6,gap:6,borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
-        <span style={{fontSize:14,fontWeight:700,color:"#e2e8f0",fontFamily:"Georgia,serif",flexShrink:0}}>🐷</span>
-        <span style={{fontSize:11,color:"#94a3b8",fontWeight:600,flexShrink:0}}>
-          {L?"เกม":"G"}{S.gameNum} · {L?"ตา":"T"}{S.trickNum}/13{S.trickNum>=13?" 🔥":""}
-        </span>
-        <div style={{flex:1}}/>
-        {aiThinking&&<span style={{fontSize:10,color:"#93c5fd",fontWeight:700}}>🤖…</span>}
-        {/* lang */}
-        {["th","en"].map(l=>(
-          <button key={l} onClick={()=>setLang(l)} style={{fontSize:10,padding:"1px 5px",borderRadius:4,border:"none",cursor:"pointer",background:lang===l?"#3b82f6":"transparent",color:lang===l?"#fff":"#64748b"}}>{l.toUpperCase()}</button>
-        ))}
-        {/* score history */}
-        <button onClick={()=>setShowHist(true)} style={{fontSize:12,padding:"2px 6px",borderRadius:5,border:"1px solid #334155",background:"transparent",color:"#94a3b8",cursor:"pointer"}}>📊</button>
-        {/* copy log */}
-        <button onClick={()=>{
-          const txt=gameLogRef.current.join("\n")||"(ยังไม่มีข้อมูล)";
-          navigator.clipboard&&navigator.clipboard.writeText(txt).then(()=>setCopyMsg(true)).catch(()=>setCopyMsg(true));
-          setTimeout(()=>setCopyMsg(false),1500);
-        }} style={{fontSize:12,padding:"2px 6px",borderRadius:5,border:"1px solid #334155",background:"transparent",color:"#94a3b8",cursor:"pointer"}}>📋</button>
-        {copyMsg&&<span style={{fontSize:9,color:"#4ade80"}}>✓</span>}
-        {/* fullscreen */}
-        <button onClick={toggleFS} style={{fontSize:12,padding:"2px 6px",borderRadius:5,border:"1px solid #334155",background:"transparent",color:"#94a3b8",cursor:"pointer"}}>⛶</button>
-        {/* chat toggle (online only) */}
-        {net&&<button onClick={()=>{openChat();setChatOpen(o=>!o);}} style={{fontSize:12,padding:"2px 6px",borderRadius:5,border:"1px solid #334155",background:chatOpen?"#1d4ed8":"transparent",color:chatOpen?"#fff":"#94a3b8",cursor:"pointer",position:"relative"}}>
-          💬{unread>0&&!chatOpen&&<span style={{position:"absolute",top:-3,right:-3,background:"#ef4444",color:"#fff",borderRadius:9,fontSize:8,padding:"0 3px",fontWeight:700}}>{unread}</span>}
-        </button>}
+    <div style={{width:"100vw",height:"100vh",background:"#f0f1f3",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
+      <div style={{background:PNL,padding:"5px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+BRD,flexShrink:0,height:40,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+        <span style={{fontSize:17,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif"}}>🐷 {title}</span>
+        <div style={{display:"flex",gap:4,background:"#f3f4f6",borderRadius:7,padding:2}}>
+          {["th","en"].map(l=>(
+            <button key={l} onClick={()=>setLang(l)} style={{fontSize:11,padding:"2px 9px",borderRadius:5,border:"none",cursor:"pointer",background:lang===l?"#3b82f6":"transparent",color:lang===l?"#fff":"#6b7280"}}>{l.toUpperCase()}</button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <span style={{fontSize:12,color:S.trickNum>=13?"#dc2626":"#6b7280",fontWeight:600}}>
+            {round} {S.gameNum} · {trick} {S.trickNum}/13{S.trickNum>=13?" "+last:""}
+          </span>
+          <button onClick={()=>setShowHist(true)} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid #d1d5db",background:"#fff",color:"#6b7280",cursor:"pointer"}}>📊</button>
+          <button onClick={()=>{
+            const log=gameLogRef.current.join("\n");
+            const txt=log||"(ยังไม่มีข้อมูล)";
+            if(navigator.clipboard&&navigator.clipboard.writeText){
+              navigator.clipboard.writeText(txt).then(()=>setCopyMsg(true)).catch(()=>setCopyMsg(true));
+            }else{setCopyMsg(true);}
+            setTimeout(()=>setCopyMsg(false),1500);
+          }} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid #d1d5db",background:"#fff",color:"#6b7280",cursor:"pointer"}}>📋 Log</button>
+          {copyMsg && <span style={{fontSize:10,color:"#16a34a",fontWeight:600}}>คัดลอกแล้ว!</span>}
+        </div>
       </div>
 
-      {/* ── MAIN ROW ── */}
+      <div style={{background:PNL,display:"flex",borderBottom:"1px solid "+BRD,flexShrink:0}}>
+        {pl.map((p,i)=>(
+          <div key={i} style={{flex:1,textAlign:"center",padding:"4px 2px",borderLeft:i>0?"1px solid "+BRD:"none",background:i===S.curIdx?"#eff6ff":"transparent"}}>
+            <div style={{fontSize:13,fontWeight:700,color:i===S.curIdx?"#1d4ed8":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",padding:"0 2px"}}>{p.name}{i===0?" ★":""}</div>
+            <div style={{fontSize:15,fontWeight:700,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</div>
+            <div style={{fontSize:15,fontWeight:700,color:cgS[i]>0?"#0891b2":cgS[i]<0?"#e11d48":"#9ca3af"}}>{cgS[i]>0?"+":""}{cgS[i]}</div>
+            <div style={{fontSize:10,color:"#9ca3af"}}>{totalTxt}/{curTxt}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* MAIN AREA — column layout: top full, middle with sides, bottom full */}
+      {/* TOP PLAYER — full width, toast on right */}
+      <div style={{display:"flex",flexDirection:"row",alignItems:"stretch",background:PNL,borderBottom:"1px solid "+BRD,flexShrink:0}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 8px 4px"}}>
+          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===2?"#1d4ed8":TXT}}>{pl[2].name}</div>
+          <div style={{display:"flex",width:"100%",alignItems:"center",gap:0,justifyContent:"center"}}>
+            {S.wonCards[2].filter(c=>isSC(c)).length>0 && <SCP wc={S.wonCards[2]} vert={false}/>}
+            <div style={{display:"flex",justifyContent:"center",overflow:"hidden"}}>
+              {S.hands[2].map((_,i)=><div key={i} style={{marginLeft:i>0?Math.max(-Math.round(28*sf),-(Math.round(28*sf)*(13-1))/(Math.max(S.hands[2].length,1))):0,flexShrink:1}}><CB w={Math.round(28*sf)} h={Math.round(40*sf)}/></div>)}
+            </div>
+          </div>
+        </div>
+        {aiThinking && (
+          <div style={{display:"flex",alignItems:"center",padding:"4px 6px",borderLeft:"1px solid "+BRD,minWidth:0}}>
+            <div style={{background:"rgba(30,30,60,0.9)",borderRadius:10,padding:"5px 10px",display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:14}}>🤖</span>
+              <span style={{fontSize:12,color:"#93c5fd",fontWeight:700,whiteSpace:"nowrap"}}>AI กำลังคิด...</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* MIDDLE ROW: left panel + trick area + right panel */}
       <div style={{flex:1,display:"flex",flexDirection:"row",overflow:"hidden",minHeight:0}}>
 
-        {/* ── LEFT PANEL: pl[3] + scores ── */}
-        <div style={{width:Math.round(68*sf),flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",padding:"4px 3px",background:"rgba(255,255,255,0.06)",borderRight:"1px solid rgba(255,255,255,0.07)"}}>
-          <div style={{fontSize:10,fontWeight:700,color:S.curIdx===3?"#60a5fa":"#94a3b8",textAlign:"center",wordBreak:"break-word",lineHeight:1.2}}>{pl[3].name}</div>
+        {/* LEFT pl[3] */}
+        <div style={{width:Math.round(80*Math.min(sf,1.5)),display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 3px",background:PNL,borderRight:"1px solid "+BRD}}>
+          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===3?"#1d4ed8":TXT,textAlign:"center",wordBreak:"break-word",lineHeight:1.2,marginBottom:4}}>{pl[3].name}</div>
           <SCP wc={S.wonCards[3]} vert={true}/>
-          <OppCards count={S.hands[3].length} rot={true} max={13}/>
-          <ScoreCol/>
-        </div>
-
-        {/* ── CENTER COLUMN: top opp + table + my hand ── */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,overflow:"hidden"}}>
-
-          {/* top opp pl[2] */}
-          <div style={{height:Math.round(38*sf),flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"2px 8px"}}>
-            <span style={{fontSize:10,fontWeight:700,color:S.curIdx===2?"#60a5fa":"#94a3b8",whiteSpace:"nowrap"}}>{pl[2].name}</span>
-            <SCP wc={S.wonCards[2]} vert={false}/>
-            <OppCards count={S.hands[2].length} rot={false} max={13}/>
-          </div>
-
-          {/* trick table — green narrowed to 70% (−15% each side) */}
-          <div style={{flex:1,display:"flex",justifyContent:"center",alignItems:"stretch",background:"#0f2027",minHeight:0,overflow:"hidden"}}>
-          <div style={{width:"70%",position:"relative",background:GREEN,overflow:"hidden"}}>
-            {/* lead/toast bubble */}
-            {S.toast.msg?(
-              <div style={{position:"absolute",top:"38%",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(15,20,40,0.92)",borderRadius:14,padding:"3px 12px",zIndex:30,pointerEvents:"none",maxWidth:"80%",textAlign:"center"}}>
-                <span style={{fontSize:11,color:"#f1f5f9",fontWeight:700}}>{S.toast.msg}</span>
-              </div>
-            ):ls?(
-              <div style={{position:"absolute",top:"38%",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(255,255,255,0.93)",borderRadius:14,padding:"2px 10px",zIndex:30,pointerEvents:"none",whiteSpace:"nowrap"}}>
-                <span style={{fontSize:10,color:"#1e3a5f",fontWeight:700}}>{pl[S.leadIdx].name}</span>
-                <span style={{fontSize:10,color:"#9ca3af"}}> ▸ </span>
-                <span style={{fontSize:16,fontWeight:900,color:SC(ls)==="#1a1a2e"?"#1a1a2e":SC(ls)}}>{ls}</span>
-              </div>
-            ):null}
-            <RoundSummary/>
-            {/* cards on table */}
-            <div style={{position:"absolute",inset:0}}>
-              {[0,1,2,3].map(pi=>{
-                const played=S.trick.find(x=>x.playerIdx===pi);
-                const myTurn=pi===S.curIdx&&S.phase==="playing";
-                const isLead=S.trick.length>0&&S.trick[0].playerIdx===pi;
-                return(
-                  <div key={pi} style={{position:"absolute",...SP[pi],display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                    {played
-                      ?<CF card={played.card} dis={true} w={tW} h={tH} lead={isLead} trick={true}/>
-                      :myTurn
-                        ?<div style={{width:tW,height:tH,borderRadius:6,border:"2px dashed #facc15",display:"flex",alignItems:"center",justifyContent:"center",color:"#facc15",fontSize:18,background:"rgba(250,204,21,0.10)"}}>?</div>
-                        :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                          <CB w={tW} h={tH}/>
-                          <span style={{fontSize:9,color:"rgba(255,255,255,0.5)"}}>{wait}</span>
-                        </div>
-                    }
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          </div>
-
-          {/* my hand */}
-          <div style={{flexShrink:0,background:"rgba(15,32,39,0.97)",borderTop:"1px solid rgba(255,255,255,0.08)",padding:"2px 6px 4px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:1}}>
-              <span style={{fontSize:11,fontWeight:700,color:S.curIdx===0?"#facc15":"#94a3b8"}}>{pl[0].name} ★</span>
-              <SCP wc={S.wonCards[0]} vert={false}/>
-              {S.curIdx===0&&S.phase==="playing"&&<span style={{fontSize:10,color:"#4ade80",fontWeight:700}}>{yourTurn}</span>}
-              <span style={{fontSize:9,color:"#475569",marginLeft:"auto"}}>{S.hands[0].length}ใบ</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{flex:1,minWidth:0}}>
-                <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}
-                  cw={Math.round(40*sf)} ch={Math.round(56*sf)}
-                  avail={Math.max(120, vw - Math.round(68*sf) - (chatOpen?Math.round(160*sf):Math.round(68*sf)) - Math.round(60*sf) - 28)}/>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0,width:Math.round(58*sf)}}>
-                <button onClick={humanPlay} style={{padding:"9px 4px",background:S.curIdx===0&&S.phase==="playing"?"#2563eb":"rgba(255,255,255,0.05)",border:"none",borderRadius:7,fontSize:13,fontWeight:700,color:S.curIdx===0&&S.phase==="playing"?"#fff":"#475569",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",lineHeight:1.1}}>{playTxt}</button>
-                <button onClick={()=>ap({type:"SEL",val:null})} style={{padding:"5px 4px",background:"rgba(255,255,255,0.08)",border:"1px solid #334155",borderRadius:7,fontSize:11,color:"#94a3b8",cursor:"pointer"}}>{L?"ยกเลิก":"✕"}</button>
-              </div>
-            </div>
-            {S.errMsg&&<div style={{fontSize:10,color:"#f87171",textAlign:"center",marginTop:2}}>{S.errMsg}</div>}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:8}}>
+            {S.hands[3].map((_,i)=>(
+              <div key={i} style={{marginTop:i>0?-Math.round(40*sf):0}}><CB w={Math.round(30*sf)} h={Math.round(44*sf)} rot={90}/></div>
+            ))}
           </div>
         </div>
 
-        {/* ── RIGHT: pl[1] + chat panel ── */}
-        <div style={{width:chatOpen?Math.round(160*sf):Math.round(68*sf),flexShrink:0,display:"flex",flexDirection:"column",background:"rgba(255,255,255,0.06)",borderLeft:"1px solid rgba(255,255,255,0.07)",transition:"width 0.2s"}}>
-          {/* pl[1] strip */}
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"4px 3px",gap:3,flexShrink:0}}>
-            <div style={{fontSize:10,fontWeight:700,color:S.curIdx===1?"#60a5fa":"#94a3b8",textAlign:"center",wordBreak:"break-word",lineHeight:1.2}}>{pl[1].name}</div>
-            <SCP wc={S.wonCards[1]} vert={true}/>
-            <OppCards count={S.hands[1].length} rot={true} max={13}/>
-          </div>
-          {/* chat panel */}
-          {chatOpen&&net&&(
-            <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-              <div style={{flex:1,overflowY:"auto",padding:"4px 6px",display:"flex",flexDirection:"column",gap:3}}>
-                {chatMsgs.length===0&&<div style={{fontSize:10,color:"#475569",textAlign:"center",marginTop:20}}>{L?"ยังไม่มีข้อความ":"No messages"}</div>}
-                {chatMsgs.map((m,i)=>(
-                  <div key={i} style={{fontSize:10,wordBreak:"break-word"}}>
-                    <span style={{fontWeight:700,color:m.id===myId?"#60a5fa":"#94a3b8"}}>{m.name}: </span>
-                    <span style={{color:"#cbd5e1"}}>{m.text}</span>
-                  </div>
-                ))}
-                <div ref={chatEndRef}/>
-              </div>
-              <div style={{display:"flex",gap:3,padding:"4px 5px",borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-                <input value={chatIn} onChange={e=>setChatIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder={L?"พิมพ์…":"msg…"} style={{flex:1,background:"rgba(255,255,255,0.08)",border:"1px solid #334155",borderRadius:5,padding:"4px 6px",fontSize:10,color:"#e2e8f0",outline:"none"}}/>
-                <button onClick={sendChat} style={{padding:"4px 7px",background:"#2563eb",border:"none",borderRadius:5,color:"#fff",fontSize:10,cursor:"pointer"}}>{L?"ส่ง":"→"}</button>
+        {/* TRICK AREA */}
+        <div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,background:"linear-gradient(135deg,#2a7a50,#35956a,#2a7a50)",overflow:"visible",zIndex:1}}>
+          {S.toast.msg ? (
+            <div style={{position:"absolute",top:"34%",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(30,30,60,0.92)",borderRadius:20,padding:"5px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 10px rgba(0,0,0,0.25)",pointerEvents:"none",textAlign:"center",maxWidth:"60%",overflow:"hidden",textOverflow:"ellipsis"}}>
+              <span style={{fontSize:13,color:"#fff",fontWeight:700}}>{S.toast.msg}</span>
+            </div>
+          ) : ls ? (
+            <div style={{position:"absolute",top:"34%",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(255,255,255,0.95)",borderRadius:20,padding:"4px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.15)",pointerEvents:"none"}}>
+              <span style={{fontSize:13,color:"#1e3a5f",fontWeight:700}}>{pl[S.leadIdx].name}</span>
+              <span style={{fontSize:12,color:"#9ca3af"}}> lead </span>
+              <span style={{fontSize:20,fontWeight:800,color:SC(ls)==="#1a1a2e"?"#1a1a2e":SC(ls)}}>{ls}</span>
+            </div>
+          ) : null}
+          {S.phase==="roundSummary" && S.roundScores && (
+            <div style={{position:"absolute",inset:0,zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridTemplateRows:"1fr 1fr 1fr",gap:6,width:"90%",height:"85%",maxWidth:300,maxHeight:260}}>
+                {/* 3x3 grid: positions [row][col] 0-indexed
+                    [0][1]=top(pl2), [1][0]=left(pl3), [1][2]=right(pl1), [2][1]=bottom(pl0)
+                    others empty */}
+                {Array(9).fill(null).map((_,idx)=>{
+                  const row=Math.floor(idx/3), col=idx%3;
+                  // Map grid position to player
+                  let pi=-1;
+                  if(row===0&&col===1)pi=2; // top
+                  if(row===1&&col===0)pi=3; // left
+                  if(row===1&&col===2)pi=1; // right
+                  if(row===2&&col===1)pi=0; // bottom
+                  if(pi===-1)return <div key={idx}/>;
+                  const sc=S.roundScores[pi];
+                  const col2=sc>0?"#059669":sc<0?"#dc2626":"#6b7280";
+                  return(
+                    <div key={idx} style={{background:"rgba(255,255,255,0.95)",borderRadius:10,padding:"6px 4px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.25)"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#374151",marginBottom:2,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",width:"100%",textAlign:"center"}}>{cfg.players[pi].name}</div>
+                      <div style={{fontSize:26,fontWeight:900,color:col2,lineHeight:1}}>{sc>0?"+":""}{sc}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
+          <div style={{position:"relative",width:"calc(100% - 16px)",height:"calc(100% - 16px)"}}>
+            {[0,1,2,3].map(pi=>{
+              const played=S.trick.find(x=>x.playerIdx===pi);
+              const myTurn=pi===S.curIdx&&S.phase==="playing";
+              const isLead=S.trick.length>0&&S.trick[0].playerIdx===pi;
+              return (
+                <div key={pi} style={{position:"absolute",...SP[pi],display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  {played
+                    ? <CF card={played.card} dis={true} w={tW} h={tH} lead={isLead} trick={true}/>
+                    : myTurn
+                      ? <div style={{width:tW,height:tH,borderRadius:7,border:"2.5px dashed #3b82f6",display:"flex",alignItems:"center",justifyContent:"center",color:"#3b82f6",fontSize:22,background:"rgba(59,130,246,0.05)"}}>?</div>
+                      : <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                          <CB w={tW} h={tH}/>
+                          <span style={{fontSize:13,fontWeight:600,color:TXT2}}>{wait}</span>
+                        </div>
+                  }
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RIGHT pl[1] */}
+        <div style={{width:Math.round(80*Math.min(sf,1.5)),display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 3px",background:PNL,borderLeft:"1px solid "+BRD}}>
+          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===1?"#1d4ed8":TXT,textAlign:"center",wordBreak:"break-word",lineHeight:1.2,marginBottom:4}}>{pl[1].name}</div>
+          <SCP wc={S.wonCards[1]} vert={true}/>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:8}}>
+            {S.hands[1].map((_,i)=><div key={i} style={{marginTop:i>0?-40:0}}><CB w={30} h={44} rot={90}/></div>)}
+          </div>
         </div>
       </div>
 
-      {/* ── PORTRAIT ROTATE HINT (in-game only) ── */}
-      {portrait&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,32,39,0.97)",zIndex:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:"2rem",textAlign:"center"}}>
-          <div style={{fontSize:48}}>🔄</div>
-          <div style={{fontSize:15,color:"#e2e8f0",fontWeight:600,lineHeight:1.5}}>{L?"หมุนมือถือเป็นแนวนอนเพื่อเล่น":"Rotate your phone to landscape to play"}</div>
-          <button onClick={fsToggle} style={{padding:"10px 20px",background:"#2563eb",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>⛶ {L?"เต็มจอ + ล็อกแนวนอน":"Fullscreen + lock landscape"}</button>
+      {/* YOUR HAND — full width */}
+      <div style={{background:PNL,borderTop:"1px solid "+BRD,padding:"5px 8px 8px",flexShrink:0,boxShadow:"0 -2px 8px rgba(0,0,0,0.06)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:4}}>
+          <span style={{fontSize:14,fontWeight:700,color:S.curIdx===0?"#1d4ed8":TXT}}>{pl[0].name} ★</span>
+          <SCP wc={S.wonCards[0]} vert={false}/>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {S.curIdx===0&&S.phase==="playing" && <span style={{fontSize:13,color:"#059669",fontWeight:700}}>{yourTurn}</span>}
+            <span style={{fontSize:11,color:"#9ca3af"}}>{S.hands[0].length} ใบ</span>
+          </div>
         </div>
-      )}
-
-      {/* ── SCORE HISTORY MODAL ── */}
-      {showHist&&(
-        <div onClick={()=>setShowHist(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#1e293b",borderRadius:12,padding:"1rem",maxWidth:360,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{fontSize:14,fontWeight:700,color:"#e2e8f0"}}>📊 {L?"ประวัติคะแนน":"Score History"}</span>
-              <button onClick={()=>setShowHist(false)} style={{fontSize:16,border:"none",background:"none",cursor:"pointer",color:"#64748b"}}>✕</button>
+        <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>ap({type:"SEL",val:null})} style={{padding:"9px 14px",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:8,fontSize:13,color:"#6b7280",cursor:"pointer"}}>{cancelTxt}</button>
+          <button onClick={humanPlay} style={{flex:1,padding:10,background:S.curIdx===0&&S.phase==="playing"?"#2563eb":"#e5e7eb",border:"none",borderRadius:8,fontSize:14,fontWeight:700,color:S.curIdx===0&&S.phase==="playing"?"#fff":"#9ca3af",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default"}}>
+            {S.selected!==null&&S.hands[0][S.selected]?(playTxt+" "+S.hands[0][S.selected].rank+S.hands[0][S.selected].suit):playTxt}
+          </button>
+        </div>
+        {S.errMsg && <div style={{fontSize:12,color:"#dc2626",textAlign:"center",marginTop:5}}>{S.errMsg}</div>}
+      </div>
+      {showHist && (
+        <div onClick={()=>setShowHist(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"1.2rem",maxWidth:380,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <span style={{fontSize:16,fontWeight:700,color:"#1e3a5f"}}>📊 {L?"ประวัติคะแนน":"Score History"}</span>
+              <button onClick={()=>setShowHist(false)} style={{fontSize:18,border:"none",background:"none",cursor:"pointer",color:"#6b7280"}}>✕</button>
             </div>
-            {histRef.current.length===0&&<div style={{color:"#475569",textAlign:"center",padding:"1rem",fontSize:12}}>{L?"ยังไม่มีข้อมูล":"No data yet"}</div>}
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            {histRef.current.length===0 && <div style={{color:"#9ca3af",textAlign:"center",padding:"1rem"}}>{L?"ยังไม่มีข้อมูล":"No data yet"}</div>}
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
-                <tr>
-                  <th style={{padding:"4px 6px",textAlign:"left",color:"#64748b",borderBottom:"1px solid #334155"}}>{L?"เกม":"G"}</th>
-                  {pl.map((p,i)=><th key={i} style={{padding:"4px 6px",textAlign:"right",color:"#64748b",borderBottom:"1px solid #334155"}}>{p.name}</th>)}
+                <tr style={{background:"#f9fafb"}}>
+                  <th style={{padding:"6px 8px",textAlign:"left",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>{L?"เกม":"Game"}</th>
+                  {pl.map((p,i)=><th key={i} style={{padding:"6px 8px",textAlign:"right",color:"#6b7280",fontWeight:600,borderBottom:"1px solid #e5e7eb"}}>{p.name}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {histRef.current.map((row,ri)=>(
-                  <tr key={ri} style={{borderBottom:"1px solid #1e293b"}}>
-                    <td style={{padding:"4px 6px",color:"#94a3b8",fontWeight:600}}>{row.game}</td>
+                  <tr key={ri} style={{borderBottom:"1px solid #f3f4f6"}}>
+                    <td style={{padding:"6px 8px",color:"#374151",fontWeight:600}}>{row.game}</td>
                     {row.scores.map((sc,si)=>(
-                      <td key={si} style={{padding:"4px 6px",textAlign:"right",fontWeight:700,color:sc>0?"#4ade80":sc<0?"#f87171":"#64748b"}}>{sc>0?"+":""}{sc}</td>
+                      <td key={si} style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:sc>0?"#059669":sc<0?"#dc2626":"#9ca3af"}}>{sc>0?"+":""}{sc}</td>
                     ))}
                   </tr>
                 ))}
-                {histRef.current.length>0&&(
-                  <tr style={{borderTop:"2px solid #334155"}}>
-                    <td style={{padding:"4px 6px",color:"#e2e8f0",fontWeight:700}}>{totalTxt}</td>
+                {histRef.current.length>0 && (
+                  <tr style={{background:"#f9fafb",borderTop:"2px solid #e5e7eb"}}>
+                    <td style={{padding:"6px 8px",color:"#374151",fontWeight:700}}>{L?"รวม":"Total"}</td>
                     {S.totals.map((t,ti)=>(
-                      <td key={ti} style={{padding:"4px 6px",textAlign:"right",fontWeight:700,color:t>0?"#4ade80":t<0?"#f87171":"#64748b"}}>{t>0?"+":""}{t}</td>
+                      <td key={ti} style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:t>0?"#059669":t<0?"#dc2626":"#9ca3af"}}>{t>0?"+":""}{t}</td>
                     ))}
                   </tr>
                 )}
@@ -1840,17 +1741,7 @@ function Game({cfg,lang,setLang,net,onExit}){
 }
 
 // ── ONLINE: SHARED STYLES ──────────────────────────────────────
-function fsToggle(){
-  try{
-    if(!document.fullscreenElement&&!document.webkitFullscreenElement){
-      const el=document.documentElement;
-      const req=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen;
-      if(req){const p=req.call(el);if(p&&p.catch)p.catch(()=>{});}
-      try{if(screen.orientation&&screen.orientation.lock){const o=screen.orientation.lock("landscape");if(o&&o.catch)o.catch(()=>{});}}catch(e){}
-    }else{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}
-  }catch(e){}
-}
-const OWRAP={height:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"};
+const OWRAP={minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1rem",overflowY:"auto"};
 const OCARD={width:"100%",maxWidth:440,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",marginTop:"0.5rem",marginBottom:"0.5rem"};
 const OHEAD={display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"};
 const OTITLE={fontSize:22,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif"};
@@ -2012,18 +1903,12 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
           return nx;
         });
       }
-    } else if(m.type==="gchat"){
-      if(gameOnState._chatCb)gameOnState._chatCb(m.payload);
-      if(ref.current.hostId===selfId&&tx.current)tx.current.send("gchat",m.payload);
     } else if(m.type==="start"){
       const seatsX=m.payload.seats;
       const meSeat=seatsX.findIndex(s=>s.type==="human"&&s.id===selfId);
       if(meSeat<0)return;
-      const chatCbRef={current:null};
       setGameCfg(seatsToCfg(seatsX));
-      setGameNet({role:"client",mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}},
-        sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
-        bindChat:(fn)=>{chatCbRef.current=fn;gameOnState._chatCb=fn;}});
+      setGameNet({role:"client",mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}}});
       setStarted(true);
     } else if(m.type==="state"){
       if(gameOnState.current)gameOnState.current(m.payload);else frameBuf.current=m.payload;
@@ -2053,9 +1938,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
     if(seatIdx<0)return;
     if(tx.current)tx.current.send("start",{seats:sx,hostId:selfId});
     setGameCfg(seatsToCfg(sx));
-    setGameNet({role:"host",mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;},
-      sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
-      bindChat:(fn)=>{gameOnState._chatCb=fn;}});
+    setGameNet({role:"host",mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;}});
     setStarted(true);
   }
 
@@ -2119,7 +2002,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
         <div style={OCARD}>
           <div style={OHEAD}>
             <div style={OTITLE}>🐷 {L?"เล่นกับเพื่อน":"Play with friends"}</div>
-            <div style={{display:"flex",gap:6}}><button onClick={fsToggle} style={SS}>⛶</button><button onClick={onBack} style={SS}>{L?"กลับ":"Back"}</button></div>
+            <button onClick={onBack} style={SS}>{L?"กลับ":"Back"}</button>
           </div>
           <div style={{fontSize:13,color:"#6b7280",marginBottom:10}}>{L?"ใส่ชื่อ แล้วสร้างห้องใหม่ หรือเข้าห้องด้วยโค้ด":"Enter a name, then create a room or join with a code"}</div>
           <input value={name} onChange={e=>setName(e.target.value)} placeholder={L?"ชื่อของคุณ":"Your name"} style={{...OINP,marginBottom:12}}/>
@@ -2167,7 +2050,6 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
           <div style={OTITLE}>🐷 {L?"ห้องเล่น":"Lobby"}</div>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
             <span style={{fontSize:11,fontWeight:700,color:connBadge.c,background:connBadge.bg,borderRadius:6,padding:"3px 8px"}}>{connBadge.t}</span>
-            <button onClick={fsToggle} style={SS}>⛶</button>
             <button onClick={onBack} style={SS}>{L?"ออก":"Leave"}</button>
           </div>
         </div>
