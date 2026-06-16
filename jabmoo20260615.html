@@ -914,14 +914,13 @@ function PigSVG({w,h}){
   );
 }
 
-function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
+function CF({card,sel,onClick,dis,w,h,lead,trick}){
   w=w||52; h=h||74; lead=lead||false;
   const qS=card.suit==="♠"&&card.rank==="Q";
   const isJD=card.suit==="♦"&&card.rank==="J";
   const isTC=card.suit==="♣"&&card.rank==="10";
   const rankFs=Math.round(h*0.24);
   const suitFs=Math.round(h*0.38);
-  const cIdx=Math.round(h*0.20); // corner index (≈80% of center rank)
   const border=sel?"3px solid #3b82f6":lead?"3px double #d4a017":"1.5px solid #d1d5db";
   const shadow=sel?"0 5px 16px rgba(59,130,246,0.4)":lead?"0 0 8px rgba(212,160,23,0.5)":"0 2px 5px rgba(0,0,0,0.15)";
   return (
@@ -935,15 +934,11 @@ function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
         ? <img src={IMG_QS} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="Q♠"/>
         : isJD
           ? <img src={IMG_JD} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="J♦"/>
-          : !corner && (<>
+          : (<>
               <div style={{fontSize:rankFs,fontWeight:800,color:SC(card.suit),lineHeight:1}}>{card.rank}</div>
               <div style={{fontSize:trick?Math.round(h*0.50):suitFs,color:SC(card.suit),lineHeight:1}}>{card.suit}</div>
             </>)
       }
-      {corner && <div style={{position:"absolute",top:2,left:3,display:"flex",flexDirection:"column",alignItems:"center",lineHeight:0.9,zIndex:6,background:(qS||isJD)?"rgba(255,255,255,0.9)":"transparent",borderRadius:3,padding:(qS||isJD)?"1px 2px":0}}>
-        <span style={{fontSize:cIdx,fontWeight:800,color:SC(card.suit)}}>{card.rank}</span>
-        <span style={{fontSize:cIdx,color:SC(card.suit)}}>{card.suit}</span>
-      </div>}
       {isTC && <div style={{position:"absolute",top:-8,right:-5,background:"#fbbf24",color:"#78350f",fontSize:9,fontWeight:800,borderRadius:4,padding:"1px 4px",zIndex:11}}>×2</div>}
     </div>
   );
@@ -1259,31 +1254,34 @@ function seatsToCfg(seats){
 }
 
 // ── GAME COMPONENT ─────────────────────────────────────────────
-function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail}){
+function HandCards({hands0,ls,trick,curIdx,phase,selected,ap}){
   const cards=[...hands0].sort((a,b)=>{const so=["♠","♥","♦","♣"];const si=so.indexOf(a.suit)-so.indexOf(b.suit);return si||RO[a.rank]-RO[b.rank];});
   const n=cards.length;
-  const W=cw||48,H=ch||68;
-  if(n===0)return <div style={{height:H}}/>;
-  const aw=avail||((typeof window!=="undefined"?window.innerWidth:375)-16);
+  if(n===0)return <div style={{height:68,marginBottom:7}}/>;
+  const vw2=(typeof window!=="undefined"?window.innerWidth:375);
+  const sf2=Math.min(Math.max(vw2/375,1.0),2.2);
+  const W=Math.round(48*sf2),H=Math.round(68*sf2);
+  const avail=(typeof window!=="undefined"?window.innerWidth:375)-16;
+  // If cards fit without overlap → center them, no overlap
   const totalW=n*W;
-  const needOverlap=totalW>aw;
-  let ov=needOverlap?Math.round((n*W-aw)/(n-1)):0;
-  const maxOv=Math.round(W*0.78);
-  let scroll=false;
-  if(ov>maxOv){ov=maxOv;scroll=true;} // even max overlap won't fit → allow horizontal scroll
-  const justify=(needOverlap||scroll)?"flex-start":"center";
+  const needOverlap=totalW>avail;
+  const ov=needOverlap?Math.min(Math.round(W*0.7),Math.max(0,Math.round((n*W-avail)/(n-1)))):0;
+  const justify=needOverlap?"flex-start":"center";
+  // Build a set of valid card keys for current selection
+  // Use key-based selection to avoid stale index issues after cards are removed
   const selectedCard=selected!==null&&selected!==undefined?hands0[selected]:null;
   return (
-    <div className={scroll?"hand-scroll":""} style={{display:"flex",width:"100%",justifyContent:justify,paddingBottom:2,paddingTop:14,boxSizing:"border-box",overflowX:scroll?"auto":"visible"}}>
+    <div style={{display:"flex",width:"100%",justifyContent:justify,marginBottom:7,paddingBottom:2,paddingLeft:8,paddingRight:8,boxSizing:"border-box"}}>
       {cards.map((card,idx)=>{
         const vld=getValid(hands0,ls,trick);
         const ok=vld.some(c=>c.key===card.key);
         const myTurn=curIdx===0&&phase==="playing";
         const oi=hands0.findIndex(c=>c.key===card.key);
+        // Use key-based comparison to prevent stale index from selecting wrong card
         const isSel=selectedCard&&selectedCard.key===card.key&&selected===oi;
         return (
-          <div key={card.key} style={{marginLeft:idx>0?-ov:0,zIndex:isSel?20:idx,flexShrink:0}}>
-            <CF card={card} sel={isSel} onClick={()=>{if(myTurn)ap({type:"SEL",val:isSel?null:oi});}} dis={!myTurn||!ok} w={W} h={H} corner={true}/>
+          <div key={card.key} style={{marginLeft:idx>0?-ov:0,zIndex:isSel?10:idx,flexShrink:0}}>
+            <CF card={card} sel={isSel} onClick={()=>{if(myTurn)ap({type:"SEL",val:isSel?null:oi});}} dis={!myTurn||!ok} w={W} h={H}/>
           </div>
         );
       })}
@@ -1579,9 +1577,13 @@ function Game({cfg,lang,setLang,net,onExit}){
   },[]);
 
   // ── FULLSCREEN ───────────────────────────────────────────────
-  function toggleFS(){fsToggle();}
-  const fsDone=useRef(false);
-  function tryAutoFS(){if(fsDone.current)return;fsDone.current=true;fsToggle();}
+  function toggleFS(){
+    const el=document.documentElement;
+    if(!document.fullscreenElement){
+      el.requestFullscreen&&el.requestFullscreen();
+      screen.orientation&&screen.orientation.lock&&screen.orientation.lock("landscape").catch(()=>{});
+    } else {document.exitFullscreen&&document.exitFullscreen();}
+  }
 
   // ── SCORE PANEL (left column) ────────────────────────────────
   function ScoreCol(){
@@ -1643,7 +1645,7 @@ function Game({cfg,lang,setLang,net,onExit}){
   }
 
   return (
-    <div onPointerDown={tryAutoFS} style={{width:"100vw",height:"100vh",background:"#0f2027",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
+    <div style={{width:"100vw",height:"100vh",background:"#0f2027",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
 
       {/* ── HEADER ── */}
       <div style={{height:32,flexShrink:0,background:"rgba(15,32,39,0.97)",display:"flex",alignItems:"center",paddingLeft:8,paddingRight:6,gap:6,borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
@@ -1695,12 +1697,11 @@ function Game({cfg,lang,setLang,net,onExit}){
             <OppCards count={S.hands[2].length} rot={false} max={13}/>
           </div>
 
-          {/* trick table — green narrowed to 70% (−15% each side) */}
-          <div style={{flex:1,display:"flex",justifyContent:"center",alignItems:"stretch",background:"#0f2027",minHeight:0,overflow:"hidden"}}>
-          <div style={{width:"70%",position:"relative",background:GREEN,overflow:"hidden"}}>
+          {/* trick table */}
+          <div style={{flex:1,position:"relative",background:GREEN,overflow:"hidden",minHeight:0}}>
             {/* lead/toast bubble */}
             {S.toast.msg?(
-              <div style={{position:"absolute",top:"38%",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(15,20,40,0.92)",borderRadius:14,padding:"3px 12px",zIndex:30,pointerEvents:"none",maxWidth:"80%",textAlign:"center"}}>
+              <div style={{position:"absolute",top:"38%",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(15,20,40,0.92)",borderRadius:14,padding:"3px 12px",zIndex:30,pointerEvents:"none",maxWidth:"70%",textAlign:"center"}}>
                 <span style={{fontSize:11,color:"#f1f5f9",fontWeight:700}}>{S.toast.msg}</span>
               </div>
             ):ls?(
@@ -1722,7 +1723,7 @@ function Game({cfg,lang,setLang,net,onExit}){
                     {played
                       ?<CF card={played.card} dis={true} w={tW} h={tH} lead={isLead} trick={true}/>
                       :myTurn
-                        ?<div style={{width:tW,height:tH,borderRadius:6,border:"2px dashed #facc15",display:"flex",alignItems:"center",justifyContent:"center",color:"#facc15",fontSize:18,background:"rgba(250,204,21,0.10)"}}>?</div>
+                        ?<div style={{width:tW,height:tH,borderRadius:6,border:"2px dashed #60a5fa",display:"flex",alignItems:"center",justifyContent:"center",color:"#60a5fa",fontSize:18,background:"rgba(96,165,250,0.08)"}}>?</div>
                         :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                           <CB w={tW} h={tH}/>
                           <span style={{fontSize:9,color:"rgba(255,255,255,0.5)"}}>{wait}</span>
@@ -1733,26 +1734,21 @@ function Game({cfg,lang,setLang,net,onExit}){
               })}
             </div>
           </div>
-          </div>
 
           {/* my hand */}
-          <div style={{flexShrink:0,background:"rgba(15,32,39,0.97)",borderTop:"1px solid rgba(255,255,255,0.08)",padding:"2px 6px 4px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:1}}>
-              <span style={{fontSize:11,fontWeight:700,color:S.curIdx===0?"#facc15":"#94a3b8"}}>{pl[0].name} ★</span>
+          <div style={{flexShrink:0,background:"rgba(15,32,39,0.97)",borderTop:"1px solid rgba(255,255,255,0.08)",padding:"4px 6px 4px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+              <span style={{fontSize:11,fontWeight:700,color:S.curIdx===0?"#60a5fa":"#94a3b8"}}>{pl[0].name} ★</span>
               <SCP wc={S.wonCards[0]} vert={false}/>
               {S.curIdx===0&&S.phase==="playing"&&<span style={{fontSize:10,color:"#4ade80",fontWeight:700}}>{yourTurn}</span>}
               <span style={{fontSize:9,color:"#475569",marginLeft:"auto"}}>{S.hands[0].length}ใบ</span>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{flex:1,minWidth:0}}>
-                <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}
-                  cw={Math.round(40*sf)} ch={Math.round(56*sf)}
-                  avail={Math.max(120, vw - Math.round(68*sf) - (chatOpen?Math.round(160*sf):Math.round(68*sf)) - Math.round(60*sf) - 28)}/>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0,width:Math.round(58*sf)}}>
-                <button onClick={humanPlay} style={{padding:"9px 4px",background:S.curIdx===0&&S.phase==="playing"?"#2563eb":"rgba(255,255,255,0.05)",border:"none",borderRadius:7,fontSize:13,fontWeight:700,color:S.curIdx===0&&S.phase==="playing"?"#fff":"#475569",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",lineHeight:1.1}}>{playTxt}</button>
-                <button onClick={()=>ap({type:"SEL",val:null})} style={{padding:"5px 4px",background:"rgba(255,255,255,0.08)",border:"1px solid #334155",borderRadius:7,fontSize:11,color:"#94a3b8",cursor:"pointer"}}>{L?"ยกเลิก":"✕"}</button>
-              </div>
+            <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}/>
+            <div style={{display:"flex",gap:5,marginTop:3}}>
+              <button onClick={()=>ap({type:"SEL",val:null})} style={{padding:"6px 10px",background:"rgba(255,255,255,0.08)",border:"1px solid #334155",borderRadius:7,fontSize:12,color:"#94a3b8",cursor:"pointer"}}>{L?"ยกเลิก":"✕"}</button>
+              <button onClick={humanPlay} style={{flex:1,padding:7,background:S.curIdx===0&&S.phase==="playing"?"#2563eb":"rgba(255,255,255,0.05)",border:"none",borderRadius:7,fontSize:13,fontWeight:700,color:S.curIdx===0&&S.phase==="playing"?"#fff":"#475569",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default"}}>
+                {S.selected!==null&&S.hands[0][S.selected]?(playTxt+" "+S.hands[0][S.selected].rank+S.hands[0][S.selected].suit):playTxt}
+              </button>
             </div>
             {S.errMsg&&<div style={{fontSize:10,color:"#f87171",textAlign:"center",marginTop:2}}>{S.errMsg}</div>}
           </div>
@@ -1842,11 +1838,10 @@ function Game({cfg,lang,setLang,net,onExit}){
 // ── ONLINE: SHARED STYLES ──────────────────────────────────────
 function fsToggle(){
   try{
-    if(!document.fullscreenElement&&!document.webkitFullscreenElement){
+    if(!document.fullscreenElement){
       const el=document.documentElement;
-      const req=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen;
-      if(req){const p=req.call(el);if(p&&p.catch)p.catch(()=>{});}
-      try{if(screen.orientation&&screen.orientation.lock){const o=screen.orientation.lock("landscape");if(o&&o.catch)o.catch(()=>{});}}catch(e){}
+      (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el);
+      if(screen.orientation&&screen.orientation.lock)screen.orientation.lock("landscape").catch(()=>{});
     }else{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}
   }catch(e){}
 }
