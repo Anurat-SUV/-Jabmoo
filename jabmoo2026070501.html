@@ -40,15 +40,6 @@ function unlockAudio(){
 document.addEventListener('touchstart',unlockAudio,{once:true});
 document.addEventListener('click',unlockAudio,{once:true});
 
-// ── FEEL: seat colors, haptics, extra sounds, timer/emote constants ──
-const SEATCOL=["#3b82f6","#ef4444","#22c55e","#eab308"];
-const TURN_SECS=25;
-const EMOTES=["😂","😭","🐷","👍","🔥","😱","🤔","🎉"];
-function hap(p){try{if(navigator.vibrate)navigator.vibrate(p);}catch(e){}}
-function playCardTick(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=520;const t=ctx.currentTime;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.10,t+0.005);g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.1);}catch(e){}}
-function playTrickWin(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();[660,880].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const t=ctx.currentTime+i*0.08;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.13,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+0.18);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.2);});}catch(e){}}
-function playPig(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.type="sawtooth";const t=ctx.currentTime;o.frequency.setValueAtTime(300,t);o.frequency.exponentialRampToValueAtTime(70,t+0.4);g.gain.setValueAtTime(0.16,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.45);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.5);}catch(e){}}
-
 // ── CONSTANTS ──────────────────────────────────────────────────
 const SUITS=["♠","♥","♦","♣"];
 const RANKS=["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
@@ -1464,34 +1455,8 @@ function Game({cfg,lang,setLang,net,onExit}){
     lastTrickLen.current=n;
     // Check the most recently played card
     const lastCard=S.trick[n-1].card;
-    playCardTick();
     if(lastCard.suit==="♠"&&lastCard.rank==="Q") playDramaSound();
     else if(lastCard.suit==="♦"&&lastCard.rank==="J") playBrightSound();
-  });
-
-  // haptic when it becomes MY turn
-  const wasMyTurn=useRef(false);
-  useEffect(()=>{
-    const S=sRef.current;if(!S)return;
-    const mine=S.phase==="playing"&&S.curIdx===mySeat;
-    if(mine&&!wasMyTurn.current)hap(30);
-    wasMyTurn.current=mine;
-  });
-
-  // sound + haptic when a trick resolves (I won / I caught the pig)
-  const lastResolved=useRef(-1);
-  useEffect(()=>{
-    const S=sRef.current;if(!S||!S.trick)return;
-    if(S.phase==="trickDone"&&S.trick.length===4&&lastResolved.current!==(S.gameNum*100+S.trickNum)){
-      lastResolved.current=S.gameNum*100+S.trickNum;
-      const lead=S.trick[0].card.suit;
-      let best=S.trick[0];
-      for(const t of S.trick){if(t.card.suit===lead&&RO[t.card.rank]>RO[best.card.rank])best=t;}
-      const winner=best.playerIdx;
-      const pig=S.trick.some(t=>t.card.suit==="♠"&&t.card.rank==="Q");
-      if(pig&&winner===mySeat){playPig();hap([80,40,140]);}
-      else if(winner===mySeat){playTrickWin();hap(50);}
-    }
   });
 
   const lastShuffleGame=useRef(-1);
@@ -1624,52 +1589,6 @@ function Game({cfg,lang,setLang,net,onExit}){
   }
   function openChat(){setChatOpen(true);setUnread(0);}
 
-  // ── EMOTES ────────────────────────────────────────────────────
-  const [emotes,setEmotes]=useState([]); // {seat,emoji,id}
-  const [emoteOpen,setEmoteOpen]=useState(false);
-  function showEmote(seat,emoji){
-    const id=Math.random().toString(36).slice(2,8);
-    setEmotes(e=>[...e,{seat,emoji,id}]);
-    setTimeout(()=>setEmotes(e=>e.filter(x=>x.id!==id)),2200);
-  }
-  function sendEmote(emoji){
-    showEmote(mySeat,emoji);hap(15);setEmoteOpen(false);
-    if(net&&net.sendEmote)net.sendEmote({seat:mySeat,emoji});
-  }
-  useEffect(()=>{
-    if(!net||!net.bindEmote)return;
-    net.bindEmote((m)=>{if(m&&typeof m.seat==="number")showEmote(m.seat,m.emoji);});
-  },[]);
-
-  // ── TURN TIMER (anti-AFK) ─────────────────────────────────────
-  const [turnLeft,setTurnLeft]=useState(TURN_SECS);
-  const turnLeftRef=useRef(TURN_SECS);
-  const turnKey=useRef("");
-  function autoPlayTimeout(){
-    const S=sRef.current;
-    if(!S||S.phase!=="playing")return;
-    const seat=S.curIdx;
-    const ls2=S.trick.length?S.trick[0].card.suit:null;
-    const vld=getValid(S.hands[seat],ls2,S.trick);
-    if(!vld.length)return;
-    const card=vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
-    if(net&&isClient){net.send("play",{seat,cardKey:card.key});sRef.current={...S,selected:null};rd();}
-    else ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
-  }
-  useEffect(()=>{
-    const iv=setInterval(()=>{
-      const S=sRef.current;
-      if(!S||S.phase!=="playing")return;
-      const key=S.gameNum+"-"+S.trickNum+"-"+S.curIdx;
-      if(turnKey.current!==key){turnKey.current=key;turnLeftRef.current=TURN_SECS;setTurnLeft(TURN_SECS);return;}
-      const iControl=net?(S.curIdx===mySeat):(S.curIdx===0);
-      if(!iControl)return; // clock only runs for the seat this client plays
-      turnLeftRef.current-=1;setTurnLeft(turnLeftRef.current);
-      if(turnLeftRef.current<=0){turnKey.current="";autoPlayTimeout();}
-    },1000);
-    return()=>clearInterval(iv);
-  },[]);
-
   // ── ORIENTATION (in-game only rotate hint) ───────────────────
   const [portrait,setPortrait]=useState(typeof window!=="undefined"&&window.innerHeight>window.innerWidth);
   useEffect(()=>{
@@ -1692,7 +1611,7 @@ function Game({cfg,lang,setLang,net,onExit}){
       <div style={{display:"flex",flexDirection:"column",gap:2,padding:"2px 0"}}>
         {pl.map((p,i)=>(
           <div key={i} style={{background:i===S.curIdx?"#eff6ff":"rgba(255,255,255,0.6)",borderRadius:6,padding:"3px 5px",border:i===S.curIdx?"1px solid #bfdbfe":"1px solid transparent"}}>
-            <div style={{fontSize:10,fontWeight:700,color:i===S.curIdx?"#1d4ed8":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:56}}><span style={{display:"inline-block",width:7,height:7,borderRadius:4,background:SEATCOL[i],marginRight:3}}/>{p.name}{i===0?" ★":""}</div>
+            <div style={{fontSize:10,fontWeight:700,color:i===S.curIdx?"#1d4ed8":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:56}}>{p.name}{i===0?" ★":""}</div>
             <div style={{display:"flex",gap:3}}>
               <span style={{fontSize:11,fontWeight:800,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</span>
               <span style={{fontSize:9,color:"#9ca3af",alignSelf:"center"}}>{cgS[i]>0?"+":""}{cgS[i]}</span>
@@ -1745,39 +1664,8 @@ function Game({cfg,lang,setLang,net,onExit}){
     );
   }
 
-  function Overlays(){
-    const myDisp=net?mySeat:0;
-    return (
-      <React.Fragment>
-        <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:250}}>
-          {emotes.map(e=>{
-            const p=((e.seat-mySeat)%4+4)%4;
-            const pos=[{bottom:"20%",left:"50%",transform:"translateX(-50%)"},{right:"9%",top:"44%"},{top:"12%",left:"50%",transform:"translateX(-50%)"},{left:"9%",top:"44%"}][p];
-            return <div key={e.id} style={{position:"absolute",...pos,fontSize:46,filter:"drop-shadow(0 2px 6px rgba(0,0,0,0.45))"}}>{e.emoji}</div>;
-          })}
-        </div>
-        {S.phase==="playing"&&S.curIdx===0&&turnLeft<=15&&(
-          <div style={{position:"fixed",top:"8px",left:"50%",transform:"translateX(-50%)",zIndex:260,background:turnLeft<=5?"#dc2626":"rgba(15,20,40,0.9)",color:"#fff",borderRadius:20,padding:"3px 13px",fontSize:13,fontWeight:800,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>⏱ {turnLeft}</div>
-        )}
-      </React.Fragment>
-    );
-  }
-  function EmoteFab(){
-    return (
-      <React.Fragment>
-        <button onClick={()=>setEmoteOpen(o=>!o)} style={{position:"fixed",right:6,top:"39%",zIndex:270,width:38,height:38,borderRadius:19,border:"none",background:"rgba(37,99,235,0.92)",color:"#fff",fontSize:19,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.35)"}}>😊</button>
-        {emoteOpen&&(
-          <div style={{position:"fixed",right:50,top:"30%",zIndex:271,background:"#fff",borderRadius:12,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.28)",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
-            {EMOTES.map(em=><button key={em} onClick={()=>sendEmote(em)} style={{fontSize:24,border:"none",background:"transparent",cursor:"pointer",padding:5,borderRadius:8}}>{em}</button>)}
-          </div>
-        )}
-      </React.Fragment>
-    );
-  }
-
   if(orient==="landscape") return (
     <div onPointerDown={tryAutoFS} className="vh100" style={{width:"100vw",background:"#0f2027",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
-      <Overlays/><EmoteFab/>
 
       {/* ── HEADER ── */}
       <div style={{height:32,flexShrink:0,background:"rgba(15,32,39,0.97)",display:"flex",alignItems:"center",paddingLeft:8,paddingRight:6,gap:6,borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
@@ -2005,7 +1893,6 @@ function Game({cfg,lang,setLang,net,onExit}){
 
   return (
     <div className="vh100" style={{width:"100vw",background:"#f0f1f3",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
-      <Overlays/><EmoteFab/>
       <div style={{background:PNL,padding:"5px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+BRD,flexShrink:0,height:40,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
         <span style={{fontSize:17,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif"}}>🐷 {title}</span>
         <div style={{display:"flex",gap:4,background:"#f3f4f6",borderRadius:7,padding:2}}>
@@ -2037,7 +1924,7 @@ function Game({cfg,lang,setLang,net,onExit}){
       <div style={{background:PNL,display:"flex",borderBottom:"1px solid "+BRD,flexShrink:0}}>
         {pl.map((p,i)=>(
           <div key={i} style={{flex:1,textAlign:"center",padding:"4px 2px",borderLeft:i>0?"1px solid "+BRD:"none",background:i===S.curIdx?"#eff6ff":"transparent"}}>
-            <div style={{fontSize:13,fontWeight:700,color:i===S.curIdx?"#1d4ed8":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",padding:"0 2px"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:SEATCOL[i],marginRight:3,verticalAlign:"middle"}}/>{p.name}{i===0?" ★":""}</div>
+            <div style={{fontSize:13,fontWeight:700,color:i===S.curIdx?"#1d4ed8":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",padding:"0 2px"}}>{p.name}{i===0?" ★":""}</div>
             <div style={{fontSize:15,fontWeight:700,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</div>
             <div style={{fontSize:15,fontWeight:700,color:cgS[i]>0?"#0891b2":cgS[i]<0?"#e11d48":"#9ca3af"}}>{cgS[i]>0?"+":""}{cgS[i]}</div>
             <div style={{fontSize:10,color:"#9ca3af"}}>{totalTxt}/{curTxt}</div>
@@ -2401,9 +2288,6 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
     } else if(m.type==="gchat"){
       if(gameOnState._chatCb)gameOnState._chatCb(m.payload);
       if(ref.current.hostId===selfId&&tx.current)tx.current.send("gchat",m.payload);
-    } else if(m.type==="gemote"){
-      if(gameOnState._emoteCb)gameOnState._emoteCb(m.payload);
-      if(ref.current.hostId===selfId&&tx.current)tx.current.send("gemote",m.payload);
     } else if(m.type==="start"){
       const seatsX=m.payload.seats;
       const meSeat=seatsX.findIndex(s=>s.type==="human"&&s.id===selfId);
@@ -2412,9 +2296,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
       setGameCfg(seatsToCfg(seatsX));
       setGameNet({role:"client",mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}},
         sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
-        bindChat:(fn)=>{chatCbRef.current=fn;gameOnState._chatCb=fn;},
-        sendEmote:(m)=>{if(tx.current)tx.current.send("gemote",m);},
-        bindEmote:(fn)=>{gameOnState._emoteCb=fn;}});
+        bindChat:(fn)=>{chatCbRef.current=fn;gameOnState._chatCb=fn;}});
       setStarted(true);
     } else if(m.type==="state"){
       if(gameOnState.current)gameOnState.current(m.payload);else frameBuf.current=m.payload;
@@ -2446,9 +2328,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
     setGameCfg(seatsToCfg(sx));
     setGameNet({role:"host",mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;},
       sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
-      bindChat:(fn)=>{gameOnState._chatCb=fn;},
-      sendEmote:(m)=>{if(tx.current)tx.current.send("gemote",m);},
-      bindEmote:(fn)=>{gameOnState._emoteCb=fn;}});
+      bindChat:(fn)=>{gameOnState._chatCb=fn;}});
     setStarted(true);
   }
 
