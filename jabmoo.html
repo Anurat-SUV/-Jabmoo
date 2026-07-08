@@ -20,7 +20,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(e
 @keyframes confettiFall{0%{transform:translateY(-10vh) rotate(0);opacity:1;}100%{transform:translateY(110vh) rotate(720deg);opacity:0.6;}}
 @keyframes goldPulse{0%,100%{box-shadow:0 0 6px 1px rgba(212,175,55,0.55);}50%{box-shadow:0 0 14px 4px rgba(212,175,55,0.95);}}
 .confetti{position:fixed;top:0;font-size:20px;pointer-events:none;animation:confettiFall linear forwards;z-index:500;}
-.vh100{height:100vh;height:100dvh;}
+.vh100{height:100vh;height:100dvh;padding-top:env(safe-area-inset-top);box-sizing:border-box;}
 input,select,button{font-family:inherit;}
 select{appearance:auto;}
 .hand-scroll{display:flex;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
@@ -1207,7 +1207,7 @@ function GameOver({players,totals,lang,history,onAgain}){
   const [showHist,setShowHist]=useState(true);
   const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i])}))].sort((a,b)=>b.score-a.score);
   return (
-    <div style={{minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem",overflowY:"auto"}}>
+    <div style={{minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"center",justifyContent:"center",padding:"calc(1rem + env(safe-area-inset-top)) 1rem 1rem",overflowY:"auto"}}>
       {confetti.map((c,i)=><span key={i} className="confetti" style={{left:c.l+"%",animationDuration:c.d+"s",animationDelay:c.dl+"s"}}>{c.e}</span>)}
       <div style={{width:"100%",maxWidth:420,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.1)",textAlign:"center",marginTop:"0.5rem",marginBottom:"0.5rem"}}>
         <div style={{fontSize:38,marginBottom:8}}>🏆</div>
@@ -1442,12 +1442,17 @@ function Game({cfg,lang,setLang,net,onExit}){
     if(S.gameNum<1)return;
     if(!cfg.players[S.curIdx].isBot)return;
     const k=S.curIdx+"-"+S.trickNum+"-"+S.trick.length+"-"+S.gameNum;
+    // bk.current marks keys already PLAYED (set inside the timeout), not merely
+    // scheduled — cleanup clears the pending timer on every re-render, so an
+    // unplayed key must be rescheduled or the bot deadlocks.
     if(bk.current===k)return;
-    bk.current=k;
     clearTimeout(tmr.current);
     tmr.current=setTimeout(()=>{
       const S2=sRef.current;
       if(!S2||S2.phase!=="playing"||!cfg.players[S2.curIdx].isBot)return;
+      const k2=S2.curIdx+"-"+S2.trickNum+"-"+S2.trick.length+"-"+S2.gameNum;
+      if(bk.current===k2)return;
+      bk.current=k2;
       const lvl=cfg.players[S2.curIdx].botLevel;
       if(lvl===3){
         setAiThinking(true);
@@ -1859,7 +1864,7 @@ function Game({cfg,lang,setLang,net,onExit}){
           })}
         </div>
         {S.phase==="playing"&&S.curIdx===0&&turnLeft<=15&&(
-          <div style={{position:"fixed",top:"8px",left:"50%",transform:"translateX(-50%)",zIndex:260,background:turnLeft<=5?"#dc2626":"rgba(15,20,40,0.9)",color:"#fff",borderRadius:20,padding:"3px 13px",fontSize:13,fontWeight:800,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>⏱ {turnLeft}</div>
+          <div style={{position:"fixed",top:"calc(8px + env(safe-area-inset-top))",left:"50%",transform:"translateX(-50%)",zIndex:260,background:turnLeft<=5?"#dc2626":"rgba(15,20,40,0.9)",color:"#fff",borderRadius:20,padding:"3px 13px",fontSize:13,fontWeight:800,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>⏱ {turnLeft}</div>
         )}
       </React.Fragment>
     );
