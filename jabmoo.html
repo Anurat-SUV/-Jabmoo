@@ -7,10 +7,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-<meta name="theme-color" content="#0f2027">
+<meta name="theme-color" content="#0b1f12">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="จับหมู">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0f2027;overflow:hidden;height:100vh;height:100dvh;width:100vw;}
+body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(ellipse at 50% 30%,#14361f 0%,#0b1f12 60%,#060f09 100%);overflow:hidden;height:100vh;height:100dvh;width:100vw;}
+@keyframes confettiFall{0%{transform:translateY(-10vh) rotate(0);opacity:1;}100%{transform:translateY(110vh) rotate(720deg);opacity:0.6;}}
+@keyframes goldPulse{0%,100%{box-shadow:0 0 6px 1px rgba(212,175,55,0.55);}50%{box-shadow:0 0 14px 4px rgba(212,175,55,0.95);}}
+.confetti{position:fixed;top:0;font-size:20px;pointer-events:none;animation:confettiFall linear forwards;z-index:500;}
 .vh100{height:100vh;height:100dvh;}
 input,select,button{font-family:inherit;}
 select{appearance:auto;}
@@ -908,6 +917,87 @@ async function botPlayClaude(hand,ls,tc,allWon,totals,myIdx,playerNames){
   return botPlay(hand,ls,tc,allWon,totals,myIdx,arguments[7]||[],arguments[8]||[{},{},{},{}]);
 }
 
+// ── LV3: MONTE CARLO BOT ─────────────────────────────────────────
+// Determinized rollouts: deal unseen cards to opponents (respecting known voids),
+// finish the round with the Lv2 heuristic for everyone, average my relative score.
+function mcDeal(unseen,counts,voids){
+  const u=shuffle(unseen);
+  const hands=[[],[],[],[]];
+  const need=counts.slice();
+  for(const c of u){
+    let opts=[];
+    for(let p=0;p<4;p++)if(need[p]>0&&!(voids[p]&&voids[p][c.suit]))opts.push(p);
+    if(!opts.length){for(let p=0;p<4;p++)if(need[p]>0)opts.push(p);}
+    const pick=opts[0|Math.random()*opts.length];
+    hands[pick].push(c);need[pick]--;
+  }
+  return hands;
+}
+function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
+  playLog=playLog||[];voids=voids||[{},{},{},{}];
+  const vld=getValid(hand,ls,tc);
+  if(vld.length===1)return vld[0];
+  budgetMs=budgetMs||700;
+  const start=Date.now();
+  // unseen cards = full deck minus my hand and everything in playLog (incl. current trick)
+  const seen=new Set();
+  hand.forEach(c=>seen.add(c.key));
+  playLog.forEach(e=>seen.add(e.card.key));
+  tc.forEach(t=>seen.add(t.card.key));
+  const unseen=[];
+  for(const s of SUITS)for(const r of RANKS){const k=r+s;if(!seen.has(k))unseen.push({rank:r,suit:s,key:k});}
+  const playedBy=[0,0,0,0];
+  playLog.forEach(e=>{playedBy[e.pi]++;});
+  const counts=[0,1,2,3].map(p=>p===myIdx?0:13-playedBy[p]);
+  const wt0=allWon.map(a=>(a.length/4)|0);
+  const sums=vld.map(()=>0),ns=vld.map(()=>0);
+  while(Date.now()-start<budgetMs){
+    const dealHands=mcDeal(unseen,counts,voids);
+    for(let ci=0;ci<vld.length;ci++){
+      const hs=[0,1,2,3].map(p=>p===myIdx?hand.filter(c=>c.key!==vld[ci].key):dealHands[p].slice());
+      const wc=allWon.map(a=>a.slice());
+      const wt=wt0.slice();
+      const vds=voids.map(v=>({...v}));
+      let plog=playLog.slice();
+      let trick=tc.map(t=>({playerIdx:t.playerIdx,card:t.card}));
+      const myLs=trick.length?trick[0].card.suit:null;
+      if(myLs&&vld[ci].suit!==myLs)vds[myIdx][myLs]=true;
+      trick.push({playerIdx:myIdx,card:vld[ci]});
+      plog=plog.concat([{pi:myIdx,card:vld[ci]}]);
+      let cur=(myIdx+1)%4,guard=0;
+      while(guard++<80){
+        if(trick.length===4){
+          const ls0=trick[0].card.suit;
+          const w=trickWin(trick,ls0);
+          for(const t of trick)wc[w].push(t.card);
+          wt[w]++;cur=w;trick=[];
+          if(hs.every(h=>h.length===0))break;
+          continue;
+        }
+        if(hs[cur].length===0)break;
+        const ls2=trick.length?trick[0].card.suit:null;
+        const card=botPlay(hs[cur],ls2,trick,wc,totals,cur,plog,vds);
+        if(!card)break;
+        hs[cur]=hs[cur].filter(c=>c.key!==card.key);
+        if(ls2&&card.suit!==ls2)vds[cur][ls2]=true;
+        trick.push({playerIdx:cur,card});
+        plog.push({pi:cur,card});
+        cur=(cur+1)%4;
+      }
+      const sc=[0,1,2,3].map(p=>calcScore(wc[p],wt[p]));
+      const others=(sc[0]+sc[1]+sc[2]+sc[3]-sc[myIdx])/3;
+      sums[ci]+=sc[myIdx]-others;ns[ci]++;
+    }
+    if(ns[0]>=200)break;
+  }
+  let best=0,bv=-1e9;
+  for(let i=0;i<vld.length;i++){
+    const v=ns[i]?sums[i]/ns[i]:-1e9;
+    if(v>bv){bv=v;best=i;}
+  }
+  return vld[best];
+}
+
 // ── CARD COMPONENTS ────────────────────────────────────────────
 function PigSVG({w,h}){
   return (
@@ -980,8 +1070,8 @@ function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
 function CB({w,h,rot}){
   w=w||50; h=h||70; rot=rot||0;
   return (
-    <div style={{width:w,height:h,background:"#3b5fa0",borderRadius:7,border:"1.5px solid #5b7fc0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",transform:"rotate("+rot+"deg)"}}>
-      <div style={{width:w-10,height:h-10,border:"1.5px solid rgba(255,255,255,0.3)",borderRadius:3}}/>
+    <div style={{width:w,height:h,background:"linear-gradient(135deg,#7a1220 0%,#a3182b 45%,#7a1220 100%)",borderRadius:7,border:"1.5px solid #d4af37",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",transform:"rotate("+rot+"deg)"}}>
+      <div style={{width:w-10,height:h-10,border:"1px solid rgba(212,175,55,0.65)",borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(212,175,55,0.8)",fontSize:Math.max(8,Math.round(h*0.22))}}>🐷</div>
     </div>
   );
 }
@@ -1065,6 +1155,7 @@ function Setup({onStart,onOnline,lang,setLang}){
               <select value={lv[i]} onChange={e=>{const x=[...lv];x[i]=+e.target.value;setLv(x);}} style={SS}>
                 <option value={1}>Lv1</option>
                 <option value={2}>Lv2</option>
+                <option value={3}>Lv3 🧠</option>
                 <option value={3}>Lv3 AI</option>
               </select>
             )}
@@ -1111,11 +1202,13 @@ function Setup({onStart,onOnline,lang,setLang}){
 
 // ── GAME OVER ──────────────────────────────────────────────────
 function GameOver({players,totals,lang,history,onAgain}){
+  const confetti=React.useMemo(()=>Array(26).fill(0).map((_,i)=>({l:Math.random()*100,d:2.2+Math.random()*2.5,dl:Math.random()*1.6,e:["🎉","✨","🐷","🃏","💰"][i%5]})),[]);
   const L=lang==="th";
   const [showHist,setShowHist]=useState(true);
   const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i])}))].sort((a,b)=>b.score-a.score);
   return (
     <div style={{minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem",overflowY:"auto"}}>
+      {confetti.map((c,i)=><span key={i} className="confetti" style={{left:c.l+"%",animationDuration:c.d+"s",animationDelay:c.dl+"s"}}>{c.e}</span>)}
       <div style={{width:"100%",maxWidth:420,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.1)",textAlign:"center",marginTop:"0.5rem",marginBottom:"0.5rem"}}>
         <div style={{fontSize:38,marginBottom:8}}>🏆</div>
         <div style={{fontSize:24,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif",marginBottom:4}}>{L?"จบเกม!":"Game Over!"}</div>
@@ -1357,6 +1450,15 @@ function Game({cfg,lang,setLang,net,onExit}){
       if(!S2||S2.phase!=="playing"||!cfg.players[S2.curIdx].isBot)return;
       const lvl=cfg.players[S2.curIdx].botLevel;
       if(lvl===3){
+        setAiThinking(true);
+        setTimeout(()=>{
+          const S3=sRef.current;
+          if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
+          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,700);
+          setAiThinking(false);
+          ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
+        },30);
+      } else if(lvl===4){
         setAiThinking(true);
         botPlayClaude(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,cfg.players.map(p=>p.name))
           .then(card=>{
@@ -1982,10 +2084,11 @@ function Game({cfg,lang,setLang,net,onExit}){
   const shortSide=Math.min(vw,vh);
   const sf=Math.min(Math.max(shortSide/375,1.0),2.2);
   const tW=Math.round(42*sf), tH=Math.round(60*sf);
-  const PNL="rgba(255,255,255,0.88)";
-  const BRD="rgba(0,0,0,0.08)";
-  const TXT="rgba(30,30,60,0.85)";
-  const TXT2="rgba(30,30,60,0.45)";
+  const PNL="rgba(16,28,20,0.92)";
+  const BRD="rgba(212,175,55,0.28)";
+  const TXT="#e8dcc0";
+  const TXT2="rgba(232,220,192,0.45)";
+  const GOLD="#d4af37";
   const SP=[
     {bottom:"0%",left:"50%",transform:"translateX(-50%)"},
     {right:"0%",top:"50%",transform:"translateY(-50%)"},
@@ -2004,11 +2107,11 @@ function Game({cfg,lang,setLang,net,onExit}){
   const curTxt=L?"เกมนี้":"Now";
 
   return (
-    <div className="vh100" style={{width:"100vw",background:"#f0f1f3",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
+    <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
       <Overlays/><EmoteFab/>
       <div style={{background:PNL,padding:"5px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+BRD,flexShrink:0,height:40,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-        <span style={{fontSize:17,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif"}}>🐷 {title}</span>
-        <div style={{display:"flex",gap:4,background:"#f3f4f6",borderRadius:7,padding:2}}>
+        <span style={{fontSize:17,fontWeight:800,color:"#d4af37",fontFamily:"Georgia,serif",textShadow:"0 1px 3px rgba(0,0,0,0.6)"}}>🐷 {title}</span>
+        <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.07)",borderRadius:7,padding:2}}>
           {["th","en"].map(l=>(
             <button key={l} onClick={()=>setLang(l)} style={{fontSize:11,padding:"2px 9px",borderRadius:5,border:"none",cursor:"pointer",background:lang===l?"#3b82f6":"transparent",color:lang===l?"#fff":"#6b7280"}}>{l.toUpperCase()}</button>
           ))}
@@ -2017,11 +2120,11 @@ function Game({cfg,lang,setLang,net,onExit}){
           <span style={{fontSize:12,color:S.trickNum>=13?"#dc2626":"#6b7280",fontWeight:600}}>
             {round} {S.gameNum} · {trickL} {S.trickNum}/13{S.trickNum>=13?" "+last:""}
           </span>
-          <button onClick={()=>setOrient("landscape")} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid #d1d5db",background:"#fff",color:"#6b7280",cursor:"pointer"}}>🔄</button>
-          {net&&<button onClick={()=>{if(chatOpen){setChatOpen(false);}else{openChat();}}} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid #d1d5db",background:chatOpen?"#2563eb":"#fff",color:chatOpen?"#fff":"#6b7280",cursor:"pointer",position:"relative"}}>
+          <button onClick={()=>setOrient("landscape")} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid rgba(212,175,55,0.4)",background:"rgba(255,255,255,0.06)",color:"#d4af37",cursor:"pointer"}}>🔄</button>
+          {net&&<button onClick={()=>{if(chatOpen){setChatOpen(false);}else{openChat();}}} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid rgba(212,175,55,0.4)",background:chatOpen?"#d4af37":"rgba(255,255,255,0.06)",color:chatOpen?"#3b2d00":"#d4af37",cursor:"pointer",position:"relative"}}>
             💬{unread>0&&!chatOpen&&<span style={{position:"absolute",top:-5,right:-5,background:"#ef4444",color:"#fff",borderRadius:9,fontSize:8,padding:"0 3px",fontWeight:700}}>{unread}</span>}
           </button>}
-          <button onClick={()=>setShowHist(true)} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid #d1d5db",background:"#fff",color:"#6b7280",cursor:"pointer"}}>📊</button>
+          <button onClick={()=>setShowHist(true)} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid rgba(212,175,55,0.4)",background:"rgba(255,255,255,0.06)",color:"#d4af37",cursor:"pointer"}}>📊</button>
           <button onClick={()=>{
             const log=gameLogRef.current.join("\n");
             const txt=log||"(ยังไม่มีข้อมูล)";
@@ -2029,15 +2132,18 @@ function Game({cfg,lang,setLang,net,onExit}){
               navigator.clipboard.writeText(txt).then(()=>setCopyMsg(true)).catch(()=>setCopyMsg(true));
             }else{setCopyMsg(true);}
             setTimeout(()=>setCopyMsg(false),1500);
-          }} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid #d1d5db",background:"#fff",color:"#6b7280",cursor:"pointer"}}>📋</button>
+          }} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid rgba(212,175,55,0.4)",background:"rgba(255,255,255,0.06)",color:"#d4af37",cursor:"pointer"}}>📋</button>
           {copyMsg && <span style={{fontSize:10,color:"#16a34a",fontWeight:600}}>✓</span>}
         </div>
       </div>
 
       <div style={{background:PNL,display:"flex",borderBottom:"1px solid "+BRD,flexShrink:0}}>
         {pl.map((p,i)=>(
-          <div key={i} style={{flex:1,textAlign:"center",padding:"4px 2px",borderLeft:i>0?"1px solid "+BRD:"none",background:i===S.curIdx?"#eff6ff":"transparent"}}>
-            <div style={{fontSize:13,fontWeight:700,color:i===S.curIdx?"#1d4ed8":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",padding:"0 2px"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:SEATCOL[i],marginRight:3,verticalAlign:"middle"}}/>{p.name}{i===0?" ★":""}</div>
+          <div key={i} style={{flex:1,textAlign:"center",padding:"4px 2px",borderLeft:i>0?"1px solid "+BRD:"none",background:i===S.curIdx?"rgba(212,175,55,0.14)":"transparent"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"0 2px"}}>
+              <span style={{width:20,height:20,borderRadius:10,background:SEATCOL[i],color:"#fff",fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:i===S.curIdx?"2px solid #d4af37":"2px solid transparent",animation:i===S.curIdx?"goldPulse 1.2s infinite":"none"}}>{(p.name||"?").trim().charAt(0).toUpperCase()}</span>
+              <span style={{fontSize:12,fontWeight:700,color:i===S.curIdx?"#d4af37":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}{i===0?" ★":""}</span>
+            </div>
             <div style={{fontSize:15,fontWeight:700,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</div>
             <div style={{fontSize:15,fontWeight:700,color:cgS[i]>0?"#0891b2":cgS[i]<0?"#e11d48":"#9ca3af"}}>{cgS[i]>0?"+":""}{cgS[i]}</div>
             <div style={{fontSize:10,color:"#9ca3af"}}>{totalTxt}/{curTxt}</div>
@@ -2076,7 +2182,7 @@ function Game({cfg,lang,setLang,net,onExit}){
           </div>
         </div>
 
-        <div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,background:"linear-gradient(135deg,#2a7a50,#35956a,#2a7a50)",overflow:"visible",zIndex:1}}>
+        <div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,margin:"6px 4px",background:"radial-gradient(ellipse at center,#237a47 0%,#175c33 55%,#0f4123 100%)",border:"3px solid #d4af37",borderRadius:"50% / 42%",boxShadow:"inset 0 0 34px rgba(0,0,0,0.55), 0 4px 18px rgba(0,0,0,0.5)",overflow:"visible",zIndex:1}}>
           {S.toast.msg ? (
             <div style={{position:"absolute",top:"34%",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(30,30,60,0.92)",borderRadius:20,padding:"5px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 10px rgba(0,0,0,0.25)",pointerEvents:"none",textAlign:"center",maxWidth:"60%",overflow:"hidden",textOverflow:"ellipsis"}}>
               <span style={{fontSize:13,color:"#fff",fontWeight:700}}>{S.toast.msg}</span>
@@ -2153,8 +2259,8 @@ function Game({cfg,lang,setLang,net,onExit}){
         </div>
         <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}/>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>ap({type:"SEL",val:null})} style={{padding:"9px 14px",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:8,fontSize:13,color:"#6b7280",cursor:"pointer"}}>{cancelTxt}</button>
-          <button onClick={humanPlay} style={{flex:1,padding:10,background:S.curIdx===0&&S.phase==="playing"?"#2563eb":"#e5e7eb",border:"none",borderRadius:8,fontSize:14,fontWeight:700,color:S.curIdx===0&&S.phase==="playing"?"#fff":"#9ca3af",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default"}}>
+          <button onClick={()=>ap({type:"SEL",val:null})} style={{padding:"9px 14px",background:"rgba(255,255,255,0.07)",border:"1px solid "+BRD,borderRadius:8,fontSize:13,color:TXT2,cursor:"pointer"}}>{cancelTxt}</button>
+          <button onClick={humanPlay} style={{flex:1,padding:10,background:S.curIdx===0&&S.phase==="playing"?"linear-gradient(135deg,#d4af37,#f0d060,#d4af37)":"rgba(255,255,255,0.07)",border:"none",borderRadius:8,fontSize:14,fontWeight:800,color:S.curIdx===0&&S.phase==="playing"?"#3b2d00":"#5c6b60",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",boxShadow:S.curIdx===0&&S.phase==="playing"?"0 2px 10px rgba(212,175,55,0.4)":"none"}}>
             {S.selected!==null&&S.hands[0][S.selected]?(playTxt+" "+S.hands[0][S.selected].rank+S.hands[0][S.selected].suit):playTxt}
           </button>
         </div>
@@ -2589,7 +2695,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
             {s.type==="human"&&s.id===selfId&&<button onClick={leaveSeat} style={{...SS,color:"#dc2626"}}>{L?"ลุก":"Stand"}</button>}
             {s.type==="bot"&&isHost&&(
               <span style={{display:"flex",gap:6}}>
-                <select value={s.level} onChange={e=>setBotLevel(i,+e.target.value)} style={SS}><option value={1}>Lv1</option><option value={2}>Lv2</option></select>
+                <select value={s.level} onChange={e=>setBotLevel(i,+e.target.value)} style={SS}><option value={1}>Lv1</option><option value={2}>Lv2</option><option value={3}>Lv3 🧠</option></select>
                 <button onClick={()=>setBotSeat(i,false)} style={{...SS,color:"#dc2626"}}>✕</button>
               </span>
             )}
