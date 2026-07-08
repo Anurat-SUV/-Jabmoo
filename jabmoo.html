@@ -1334,6 +1334,7 @@ function gReduce(S,A){
     return{...S,hands:nh,trick:nt,curIdx:(ci+1)%4,selected:null,playLog:newLog,voids:newVoids};
   }
   if(A.type==="CLEAR"){
+    if(S.phase!=="trickDone"||!S.trick.length)return S; // stale/duplicate CLEAR — ignore
     const wi=trickWin(S.trick,S.trick[0].card.suit);
     if(S.trickNum>=13){
       // Recompute wonTricks from wonCards to avoid any stale state issues
@@ -1656,29 +1657,7 @@ function Game({cfg,lang,setLang,net,onExit}){
     if(isClient&&net.bindState)net.bindState(applyFrame);
   },[]);
 
-  const Sreal=sRef.current;
-  if(!Sreal||!Sreal.hands)return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#1e3a5f"}}>{isClient?(lang==="th"?"รอโฮสต์เริ่ม…":"Waiting for host…"):"Loading…"}</div>;
-  const S=mySeat===0?Sreal:permuteState(Sreal,mySeat);
-  const pl=mySeat===0?cfg.players:[0,1,2,3].map(p=>cfg.players[(mySeat+p)%4]);
-  if(S.gameOver){
-    if(S.lastRoundScores&&lastRecordedGame.current!==S.gameNum){
-      lastRecordedGame.current=S.gameNum;
-      histRef.current=[...histRef.current,{game:S.gameNum,scores:S.lastRoundScores}];
-      playApplause();
-    }
-    const hd=[...histRef.current];
-    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
-  }
-
   const L=lang==="th";
-  const ls=S.trick.length?S.trick[0].card.suit:null;
-  // cgS = current game score
-  // -50 if no score cards won (even if won tricks with no point cards)
-  const wt=S.wonTricks||[0,0,0,0];
-  const cgS=S.wonCards.map((w,i)=>{
-    if(w.length===0) return -50;  // no score cards won → -50
-    return calcScore(w,wt[i]);
-  });
   // ── LANDSCAPE LAYOUT CONSTANTS ──────────────────────────────
   const vw=(typeof window!=="undefined"?window.innerWidth:667);
   const vh=(typeof window!=="undefined"?window.innerHeight:375);
@@ -1794,6 +1773,28 @@ function Game({cfg,lang,setLang,net,onExit}){
   const [orient,setOrient]=useState("portrait");
 
   // ── SCORE PANEL (left column) ────────────────────────────────
+  const Sreal=sRef.current;
+  if(!Sreal||!Sreal.hands)return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#1e3a5f"}}>{isClient?(lang==="th"?"รอโฮสต์เริ่ม…":"Waiting for host…"):"Loading…"}</div>;
+  const S=mySeat===0?Sreal:permuteState(Sreal,mySeat);
+  const pl=mySeat===0?cfg.players:[0,1,2,3].map(p=>cfg.players[(mySeat+p)%4]);
+  if(S.gameOver){
+    if(S.lastRoundScores&&lastRecordedGame.current!==S.gameNum){
+      lastRecordedGame.current=S.gameNum;
+      histRef.current=[...histRef.current,{game:S.gameNum,scores:S.lastRoundScores}];
+      playApplause();
+    }
+    const hd=[...histRef.current];
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+  }
+
+  const ls=S.trick.length?S.trick[0].card.suit:null;
+  // cgS = current game score
+  // -50 if no score cards won (even if won tricks with no point cards)
+  const wt=S.wonTricks||[0,0,0,0];
+  const cgS=S.wonCards.map((w,i)=>{
+    if(w.length===0) return -50;  // no score cards won → -50
+    return calcScore(w,wt[i]);
+  });
   function ScoreCol(){
     return (
       <div style={{display:"flex",flexDirection:"column",gap:2,padding:"2px 0"}}>
