@@ -58,9 +58,9 @@ select{padding:9px 10px;border-radius:10px;border:1px solid rgba(212,175,55,0.4)
 #dashBody{background:radial-gradient(ellipse at 50% 10%,#14361f 0%,#0b1f12 70%);border:1.5px solid rgba(212,175,55,0.5);border-radius:16px;padding:14px;max-width:900px;margin:0 auto;}
 .dashHead{font-family:Georgia,serif;font-size:20px;font-weight:800;color:#d4af37;text-align:center;}
 .dashDate{text-align:center;font-size:12px;color:rgba(232,220,192,0.6);margin-bottom:10px;}
-.dashGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:10px;}
+.dashGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:10px;}
 .dashMini{background:rgba(16,28,20,0.9);border:1px solid rgba(212,175,55,0.25);border-radius:10px;padding:6px;}
-.dashMini table{font-size:9px;}
+.dashMini table{font-size:8px;table-layout:fixed;}
 .dashMini th,.dashMini td{padding:2px 1px;}
 .dashMini .secTitle{font-size:10px;margin:0 0 3px;}
 .dashBtns{display:flex;gap:8px;justify-content:center;margin:10px 0 2px;}
@@ -272,6 +272,91 @@ function kByName(){
   return acc;
 }
 
+function fmt1(n){const r=Math.round(n*10)/10;const s=Number.isInteger(r)?String(Math.abs(r)):Math.abs(r).toFixed(1);return (r>0?"+":r<0?"-":"")+s;}
+function cls1(n){return n>0.001?"pos":n<-0.001?"neg":"zer";}
+// รวมยอดทั้งคืน + ส่วนลด + ปัด 0.5 บังคับผลรวม 0
+function computeFinal(){
+  const lj=summaryByGame("jabmoo"), ls=summaryByGame("samkong");
+  const kAcc=kByName();
+  const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
+  const accJ={},accS={};
+  lj.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accJ[q]=(accJ[q]||0)+r.byName[q];}));
+  ls.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accS[q]=(accS[q]||0)+r.byName[q];}));
+  const d1=db.night.d1||0,d2=db.night.d2||0;
+  const vJ=names.map(q=>accJ[q]||0);
+  const vS0=names.map(q=>accS[q]||0);
+  const vS1=vS0.map(v=>Math.round(v*(100-d1)/100*10)/10);       // ทศนิยม 1 ตำแหน่ง ไม่ปัดเป็นจำนวนเต็ม
+  const vK=names.map(q=>kAcc[q]||0);
+  const grand=names.map((q,i)=>Math.round((vJ[i]+vS1[i]-vK[i])*10)/10);
+  const net0=grand.map(v=>v*(100-d2)/100);
+  const net=net0.map(v=>Math.round(v*2)/2);                      // ปัด closest 0.5
+  // บังคับผลรวม = 0
+  let sum=Math.round(net.reduce((a,b)=>a+b,0)*10)/10;
+  let adjIdx=-1;
+  if(Math.abs(sum)>0.001){
+    let iMin=0,iMax=0;
+    net.forEach((v,i)=>{if(v<net[iMin])iMin=i;if(v>net[iMax])iMax=i;});
+    const cand=Math.round((net[iMin]-sum)*10)/10;
+    if(cand<=0){net[iMin]=cand;adjIdx=iMin;}                     // ปรับคนลบมากสุดก่อน
+    else{net[iMax]=Math.round((net[iMax]-sum)*10)/10;adjIdx=iMax;} // ไม่ได้ → ลดคนสูงสุด
+  }
+  return {names,vJ,vS0,vS1,vK,grand,net,d1,d2,adjIdx};
+}
+// ตารางสรุปตามลำดับ: จับหมู → สามกอง → ส่วนลด3กอง → 3กองหลังลด → Grand → K → ส่วนลดสุดท้าย → Grand หลังลด
+function finalRows(f){
+  const N=f.names.length;
+  let h=`<table class="acc" style="--np:${N}"><thead><tr><th></th>${f.names.map(q=>`<th>${q}</th>`).join("")}</tr></thead><tbody>`;
+  h+=`<tr><td class="gm">🐷 รวมจับหมู</td>${f.vJ.map(v=>`<td class="${cls1(v)}">${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr><td class="gm">🃏 รวมสามกอง</td>${f.vS0.map(v=>`<td class="${cls1(v)}">${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr><td class="gm">ส่วนลดสามกอง −${f.d1}%</td>${f.vS0.map((v,i)=>{const dd=Math.round((f.vS1[i]-v)*10)/10;return `<td class="${cls1(dd)}">${dd===0?"0":fmt1(dd)}</td>`;}).join("")}</tr>`;
+  h+=`<tr><td class="gm">สามกองหลังส่วนลด</td>${f.vS1.map(v=>`<td class="${cls1(v)}">${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr class="totrow"><td class="gm">Grand Total</td>${f.grand.map(v=>`<td>${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr class="krow"><td class="gm">K (ตัวละ −1)</td>${f.vK.map(v=>`<td class="${v?"neg":"zer"}">${v?("−"+v):"0"}</td>`).join("")}</tr>`;
+  h+=`<tr><td class="gm">ส่วนลดสุดท้าย −${f.d2}%</td>${f.grand.map((v,i)=>{const dd=Math.round((f.net[i]-v)*10)/10;return `<td class="${cls1(dd)}">${dd===0?"0":fmt1(dd)}</td>`;}).join("")}</tr>`;
+  h+=`<tr class="totrow" style="filter:brightness(1.2)"><td class="gm">Grand หลังส่วนลด</td>${f.net.map((v,i)=>`<td>${fmt1(v)}${f.adjIdx===i?'<span style="font-size:9px;color:#9ca3af"> *</span>':""}</td>`).join("")}</tr>`;
+  h+=`</tbody></table>
+  <div class="hint">Grand = จับหมู + สามกอง(หลังส่วนลด) − K · ปัดเป็น 0.5 บังคับผลรวม = 0${f.adjIdx>=0?" (* ปรับเศษให้ลงตัว)":""}</div>`;
+  return h;
+}
+// ── แท่นรับเหรียญ 🥇🥈🥉 + 👑(+788) + ⭕(สามกอง≥36) ──
+function crownCircle(name){
+  let crown=false,circ=0;
+  db.sessions.forEach(s=>{
+    const idx=s.players.indexOf(name);
+    if(idx<0)return;
+    s.rounds.forEach(r=>{
+      if(s.game==="jabmoo"&&r[idx]===788)crown=true;
+      if(s.game==="samkong"&&r[idx]>=36)circ++;
+    });
+  });
+  return {crown,circ};
+}
+function podiumHTML(f){
+  if(!f.names.length)return "";
+  const order=f.names.map((q,i)=>({q,v:f.net[i]})).sort((a,b)=>b.v-a.v).slice(0,3);
+  const deco=q=>{const c=crownCircle(q);return (c.crown?"👑":"")+q+(c.circ?(" "+"⭕".repeat(Math.min(c.circ,4))+(c.circ>4?"×"+c.circ:"")):"");};
+  const spec=[
+    {i:1,h:52,bg:"linear-gradient(180deg,#e5e7eb,#9ca3af)",label:"2"},
+    {i:0,h:72,bg:"linear-gradient(180deg,#f0d060,#b8860b)",label:"1"},
+    {i:2,h:40,bg:"linear-gradient(180deg,#e8a06a,#8b5a2b)",label:"3"},
+  ];
+  return `<div style="display:flex;align-items:flex-end;gap:4px;justify-content:center">
+    ${spec.map(sp=>{
+      const o=order[sp.i];if(!o)return "";
+      return `<div style="text-align:center;min-width:64px">
+        <div style="font-size:11px;font-weight:800;color:#e8dcc0;margin-bottom:2px;white-space:nowrap">${deco(o.q)}</div>
+        <div style="font-size:10px;color:${o.v>=0?"#4ade80":"#f87171"};font-weight:800">${fmt1(o.v)}</div>
+        <div style="height:${sp.h}px;background:${sp.bg};border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:rgba(0,0,0,0.55)">${sp.label}</div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+// ── ล้างเริ่ม Session ใหม่ ──
+function clearAll(){
+  if(!confirm("เริ่ม Session ใหม่?\nข้อมูลทุกรอบจะถูกลบ — แนะนำกด 🖼 Dashboard บันทึกรูป หรือ 💾 Export ก่อน"))return;
+  db={sessions:[],activeId:null,night:{ended:false,d1:0,d2:0}};
+  pendClear();save();render();
+}
 // เลขรอบต่อประเภทเกม (รอบ 1 = เก่าสุด)
 function roundNo(sess){
   const same=db.sessions.filter(x=>x.game===sess.game).sort((a,b)=>a.startedAt-b.startedAt);
@@ -293,6 +378,7 @@ function render(){
     <button class="btn small" onclick="exportJSON()">💾 Export</button>
     <button class="btn small ${db.night.ended?"danger":""}" onclick="toggleNight()">${db.night.ended?"↩︎ เล่นต่อ":"🏁 จบ Session"}</button>
     <button class="btn small" onclick="openDash()">🖼 Dashboard</button>
+    <button class="btn small danger" onclick="clearAll()">🗑 Session ใหม่</button>
   </div>
   <div id="newBox" style="display:none;margin-top:10px">
     <div class="row">
@@ -410,29 +496,11 @@ function render(){
 
   // ── GRAND TOTAL เมื่อจบ Session ──
   if(db.night.ended&&(lj.length||ls.length)){
-    const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
-    const accJ={},accS={};
-    lj.forEach(r=>names.forEach(p=>{if(r.byName[p]!==undefined)accJ[p]=(accJ[p]||0)+r.byName[p];}));
-    ls.forEach(r=>names.forEach(p=>{if(r.byName[p]!==undefined)accS[p]=(accS[p]||0)+r.byName[p];}));
-    const d1=db.night.d1||0,d2=db.night.d2||0;
-    html+=`<div class="card" style="--np:${names.length}"><div class="secTitle">🏁 สรุปจบ Session</div>
+    const f=computeFinal();
+    html+=`<div class="card" style="--np:${f.names.length}"><div class="secTitle">🏁 สรุปจบ Session</div>
     <div class="row" style="margin-bottom:6px"><span style="font-size:12px;color:rgba(232,220,192,0.6)">ส่วนลดสามกอง:</span>${discChips("d1")}</div>
     <div class="row" style="margin-bottom:10px"><span style="font-size:12px;color:rgba(232,220,192,0.6)">ส่วนลดสุดท้าย:</span>${discChips("d2")}</div>
-    <table class="acc"><thead><tr><th style="text-align:left"></th>${names.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;
-    const rows=[];
-    const vJ=names.map(p=>accJ[p]||0);
-    const vS0=names.map(p=>accS[p]||0);
-    const vS=vS0.map(v=>Math.round(v*(100-d1)/100));
-    const vK=names.map(p=>kAcc[p]||0);
-    const grand=names.map((p,i)=>vJ[i]+vS[i]-vK[i]);
-    const net=grand.map(v=>Math.round(v*(100-d2)/100));
-    html+=`<tr><td class="gm" style="text-align:left">🐷 จับหมู (ได้/เสีย)</td>${vJ.map(v=>`<td class="${cls(v)}">${fmt(v)}</td>`).join("")}</tr>
-    <tr><td class="gm" style="text-align:left">🃏 สามกอง${d1?` (−${d1}%)`:""}</td>${vS.map((v,i)=>`<td class="${cls(v)}">${fmt(v)}${d1?`<div style="font-size:9px;color:#9ca3af">จาก ${fmt(vS0[i])}</div>`:""}</td>`).join("")}</tr>
-    <tr><td class="gm" style="text-align:left">K (ตัวละ −1)</td>${vK.map(v=>`<td class="${v?"neg":"zer"}">${v?("−"+v):"0"}</td>`).join("")}</tr>
-    <tr class="totrow"><td class="gm" style="text-align:left">Grand total</td>${grand.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
-    if(d2)html+=`<tr class="totrow" style="filter:brightness(1.15)"><td class="gm" style="text-align:left">สุทธิ (−${d2}%)</td>${net.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
-    html+=`</tbody></table>
-    <div class="hint">grand = จับหมู + สามกอง(หลังส่วนลด) − K</div>
+    ${finalRows(f)}
     </div>`;
   }
 
@@ -473,7 +541,11 @@ function dashHTML(){
   const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
   const d=new Date();const p=n=>String(n).padStart(2,"0");
   const today=p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();
-  let h=`<div class="dashHead">🐷 จับหมู..สร้างสรรค์</div><div class="dashDate">Date ${today}</div>`;
+  const fTop=computeFinal();
+  let h=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+    <div style="flex-shrink:0">${podiumHTML(fTop)}</div>
+    <div style="flex:1;min-width:0"><div class="dashHead">🐷 จับหมู..สร้างสรรค์</div><div class="dashDate" style="margin-bottom:0">Date ${today}</div></div>
+  </div>`;
 
   // บน: สรุปรอบ (ได้/เสีย จับหมู + คะแนนสามกอง) — reuse โครง acc
   const mkSum=(list,title)=>{
@@ -493,21 +565,9 @@ function dashHTML(){
   };
   h+=mkSum(lj,"🐷 ได้/เสีย")+mkSum(ls,"🃏 สามกอง");
 
-  // สรุป session (grand) — ใช้ discount ปัจจุบัน
-  const accJ={},accS={};
-  lj.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accJ[q]=(accJ[q]||0)+r.byName[q];}));
-  ls.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accS[q]=(accS[q]||0)+r.byName[q];}));
-  const d1=db.night.d1||0,d2=db.night.d2||0;
-  const vJ=names.map(q=>accJ[q]||0);
-  const vS=names.map(q=>Math.round((accS[q]||0)*(100-d1)/100));
-  const vK=names.map(q=>kAcc[q]||0);
-  const grand=names.map((q,i)=>vJ[i]+vS[i]-vK[i]);
-  const net=grand.map(v=>Math.round(v*(100-d2)/100));
-  h+=`<table class="acc" style="--np:${names.length}"><tbody>
-    <tr class="krow"><td class="gm">K สะสม (−1)</td>${vK.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>
-    <tr class="totrow"><td class="gm">Grand${d1?` (3กอง−${d1}%)`:""}</td>${grand.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>
-    ${d2?`<tr class="totrow" style="filter:brightness(1.2)"><td class="gm">สุทธิ (−${d2}%)</td>${net.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`:""}
-  </tbody></table>`;
+  // สรุป session (grand) — ลำดับแถวตามสเปก + ทศนิยม
+  const f=computeFinal();
+  h+=finalRows(f);
 
   // ล่าง: ทุกรอบตัวเล็ก (ใหม่→เก่า)
   const hist=db.sessions.filter(x=>x.rounds.length>0).sort((a,b)=>b.startedAt-a.startedAt);
