@@ -63,6 +63,9 @@ select{padding:9px 10px;border-radius:10px;border:1px solid rgba(212,175,55,0.4)
 .dashMini table{font-size:8px;table-layout:fixed;}
 .dashMini th,.dashMini td{padding:2px 1px;}
 .dashMini .secTitle{font-size:10px;margin:0 0 3px;}
+.dashMini .totrow td{font-size:9px;padding:2px 1px;}
+.dashMini .krow td{font-size:8px;padding:2px 1px;}
+.dashMini .circ{padding:0 3px;border-width:1px;box-shadow:none;}
 .dashBtns{display:flex;gap:8px;justify-content:center;margin:10px 0 2px;}
 
 #padOv{position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;}
@@ -274,7 +277,14 @@ function kByName(){
 
 function fmt1(n){const r=Math.round(n*10)/10;const s=Number.isInteger(r)?String(Math.abs(r)):Math.abs(r).toFixed(1);return (r>0?"+":r<0?"-":"")+s;}
 function cls1(n){return n>0.001?"pos":n<-0.001?"neg":"zer";}
-// รวมยอดทั้งคืน + ส่วนลด + ปัด 0.5 บังคับผลรวม 0
+// รวมยอดทั้งคืน + ส่วนลด — K แยกต่างหาก ไม่รวมยอดใดๆ
+// เศษ: .5 พอดีคงไว้ นอกนั้นตัดทศนิยมทิ้ง (toward zero) เช่น 19.7→19, −25.6→−25
+function truncKeepHalf(x){
+  const r=Math.round(x*10)/10;
+  const dec=Math.round(Math.abs(r*10))%10;
+  if(dec===5)return r;
+  return Math.trunc(r);
+}
 function computeFinal(){
   const lj=summaryByGame("jabmoo"), ls=summaryByGame("samkong");
   const kAcc=kByName();
@@ -285,24 +295,13 @@ function computeFinal(){
   const d1=db.night.d1||0,d2=db.night.d2||0;
   const vJ=names.map(q=>accJ[q]||0);
   const vS0=names.map(q=>accS[q]||0);
-  const vS1=vS0.map(v=>Math.round(v*(100-d1)/100*10)/10);       // ทศนิยม 1 ตำแหน่ง ไม่ปัดเป็นจำนวนเต็ม
-  const vK=names.map(q=>kAcc[q]||0);
-  const grand=names.map((q,i)=>Math.round((vJ[i]+vS1[i]-vK[i])*10)/10);
-  const net0=grand.map(v=>v*(100-d2)/100);
-  const net=net0.map(v=>Math.round(v*2)/2);                      // ปัด closest 0.5
-  // บังคับผลรวม = 0
-  let sum=Math.round(net.reduce((a,b)=>a+b,0)*10)/10;
-  let adjIdx=-1;
-  if(Math.abs(sum)>0.001){
-    let iMin=0,iMax=0;
-    net.forEach((v,i)=>{if(v<net[iMin])iMin=i;if(v>net[iMax])iMax=i;});
-    const cand=Math.round((net[iMin]-sum)*10)/10;
-    if(cand<=0){net[iMin]=cand;adjIdx=iMin;}                     // ปรับคนลบมากสุดก่อน
-    else{net[iMax]=Math.round((net[iMax]-sum)*10)/10;adjIdx=iMax;} // ไม่ได้ → ลดคนสูงสุด
-  }
-  return {names,vJ,vS0,vS1,vK,grand,net,d1,d2,adjIdx};
+  const vS1=vS0.map(v=>Math.round(v*(100-d1)/100*10)/10);   // ทศนิยม 1 ตำแหน่ง
+  const vK=names.map(q=>kAcc[q]||0);                         // แสดงแยก ไม่เข้ายอด
+  const grand=names.map((q,i)=>Math.round((vJ[i]+vS1[i])*10)/10);
+  const net=grand.map(v=>truncKeepHalf(v*(100-d2)/100));
+  return {names,vJ,vS0,vS1,vK,grand,net,d1,d2};
 }
-// ตารางสรุปตามลำดับ: จับหมู → สามกอง → ส่วนลด3กอง → 3กองหลังลด → Grand → K → ส่วนลดสุดท้าย → Grand หลังลด
+// ลำดับแถว: จับหมู → สามกอง → ส่วนลด3กอง → 3กองหลังลด → Grand → K(แยก) → ส่วนลดสุดท้าย → Grand หลังลด
 function finalRows(f){
   const N=f.names.length;
   let h=`<table class="acc" style="--np:${N}"><thead><tr><th></th>${f.names.map(q=>`<th>${q}</th>`).join("")}</tr></thead><tbody>`;
@@ -311,14 +310,50 @@ function finalRows(f){
   h+=`<tr><td class="gm">ส่วนลดสามกอง −${f.d1}%</td>${f.vS0.map((v,i)=>{const dd=Math.round((f.vS1[i]-v)*10)/10;return `<td class="${cls1(dd)}">${dd===0?"0":fmt1(dd)}</td>`;}).join("")}</tr>`;
   h+=`<tr><td class="gm">สามกองหลังส่วนลด</td>${f.vS1.map(v=>`<td class="${cls1(v)}">${fmt1(v)}</td>`).join("")}</tr>`;
   h+=`<tr class="totrow"><td class="gm">Grand Total</td>${f.grand.map(v=>`<td>${fmt1(v)}</td>`).join("")}</tr>`;
-  h+=`<tr class="krow"><td class="gm">K (ตัวละ −1)</td>${f.vK.map(v=>`<td class="${v?"neg":"zer"}">${v?("−"+v):"0"}</td>`).join("")}</tr>`;
-  h+=`<tr><td class="gm">ส่วนลดสุดท้าย −${f.d2}%</td>${f.grand.map((v,i)=>{const dd=Math.round((f.net[i]-v)*10)/10;return `<td class="${cls1(dd)}">${dd===0?"0":fmt1(dd)}</td>`;}).join("")}</tr>`;
-  h+=`<tr class="totrow" style="filter:brightness(1.2)"><td class="gm">Grand หลังส่วนลด</td>${f.net.map((v,i)=>`<td>${fmt1(v)}${f.adjIdx===i?'<span style="font-size:9px;color:#9ca3af"> *</span>':""}</td>`).join("")}</tr>`;
+  h+=`<tr class="krow"><td class="gm">K (แยกต่างหาก)</td>${f.vK.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>`;
+  h+=`<tr><td class="gm">ส่วนลดสุดท้าย −${f.d2}%</td>${f.grand.map((v,i)=>{const dd=Math.round(-v*f.d2/100*10)/10;return `<td class="${cls1(dd)}">${dd===0?"0":fmt1(dd)}</td>`;}).join("")}</tr>`;
+  h+=`<tr class="totrow" style="filter:brightness(1.2)"><td class="gm">Grand หลังส่วนลด</td>${f.net.map(v=>`<td>${fmt1(v)}</td>`).join("")}</tr>`;
   h+=`</tbody></table>
-  <div class="hint">Grand = จับหมู + สามกอง(หลังส่วนลด) − K · ปัดเป็น 0.5 บังคับผลรวม = 0${f.adjIdx>=0?" (* ปรับเศษให้ลงตัว)":""}</div>`;
+  <div class="hint">Grand = จับหมู + สามกอง(หลังส่วนลด) · K แยกไม่รวมยอด · เศษ .5 คงไว้ นอกนั้นตัดทศนิยม</div>`;
   return h;
 }
-// ── แท่นรับเหรียญ 🥇🥈🥉 + 👑(+788) + ⭕(สามกอง≥36) ──
+// ── ตัวการ์ตูน + แท่นรางวัล ──
+function isFemale(name){
+  const n=(name||"").trim().toLowerCase();
+  return n==="gung"||n.indexOf("กุ้ง")>=0;
+}
+// mood: 0=แชมป์ชูสองแขน 1=ชูแขนเดียว 2=ยิ้มยืน 3=เศร้าคอตก
+function personSVG(female,mood){
+  const skin="#f3c99b";
+  const shirt=female?"#e879a9":"#3b82f6";
+  const sad=mood>=3;
+  const headY=sad?11:7, headX=17+(sad?2:0);
+  const smile=sad
+    ?`<path d="M ${headX-2} ${headY+2.6} q 2 -1.6 4 0" stroke="#5b3a1e" stroke-width="0.9" fill="none"/>`
+    :`<path d="M ${headX-2} ${headY+1.6} q 2 1.8 4 0" stroke="#5b3a1e" stroke-width="0.9" fill="none"/>`;
+  const hair=female
+    ?`<path d="M ${headX-5.5} ${headY} q 0 -6.5 5.5 -6.5 q 5.5 0 5.5 6.5 l 0 5 q -1.5 1.5 -3 0 l 0 -3 q -2.5 1.5 -5 0 l 0 3 q -1.5 1.5 -3 0 z" fill="#4a2c17"/>`
+    :`<path d="M ${headX-5} ${headY-1} q 0 -5 5 -5 q 5 0 5 5 z" fill="#2d1a0e"/>`;
+  // แขน
+  let arms="";
+  if(mood===0)arms=`<line x1="13" y1="20" x2="6" y2="12" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="20" x2="28" y2="12" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  else if(mood===1)arms=`<line x1="13" y1="20" x2="6" y2="13" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="21" x2="27" y2="26" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  else if(mood===2)arms=`<line x1="13" y1="21" x2="7" y2="26" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="21" x2="27" y2="26" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  else arms=`<line x1="13" y1="22" x2="10" y2="30" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="22" x2="24" y2="30" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  // ตัว
+  const body=female
+    ?`<path d="M 17 16 L 23 32 L 11 32 Z" fill="${shirt}"/>`
+    :`<rect x="13" y="16" width="8" height="15" rx="3" fill="${shirt}"/>`;
+  const legs=`<line x1="15" y1="${female?32:30}" x2="15" y2="40" stroke="#374151" stroke-width="2.6" stroke-linecap="round"/><line x1="19" y1="${female?32:30}" x2="19" y2="40" stroke="#374151" stroke-width="2.6" stroke-linecap="round"/>`;
+  const eyes=sad
+    ?`<line x1="${headX-3}" y1="${headY}" x2="${headX-1.4}" y2="${headY+0.6}" stroke="#3a2410" stroke-width="0.9"/><line x1="${headX+3}" y1="${headY}" x2="${headX+1.4}" y2="${headY+0.6}" stroke="#3a2410" stroke-width="0.9"/>`
+    :`<circle cx="${headX-2}" cy="${headY-0.5}" r="0.85" fill="#3a2410"/><circle cx="${headX+2}" cy="${headY-0.5}" r="0.85" fill="#3a2410"/>`;
+  return `<svg width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg">
+    ${body}${arms}
+    <circle cx="${headX}" cy="${headY}" r="5" fill="${skin}"/>
+    ${hair}${eyes}${smile}${legs}
+  </svg>`;
+}
 function crownCircle(name){
   let crown=false,circ=0;
   db.sessions.forEach(s=>{
@@ -333,23 +368,22 @@ function crownCircle(name){
 }
 function podiumHTML(f){
   if(!f.names.length)return "";
-  const order=f.names.map((q,i)=>({q,v:f.net[i]})).sort((a,b)=>b.v-a.v).slice(0,3);
+  const order=f.names.map((q,i)=>({q,v:f.net[i]})).sort((a,b)=>b.v-a.v);
   const deco=q=>{const c=crownCircle(q);return (c.crown?"👑":"")+q+(c.circ?(" "+"⭕".repeat(Math.min(c.circ,4))+(c.circ>4?"×"+c.circ:"")):"");};
-  const spec=[
-    {i:1,h:52,bg:"linear-gradient(180deg,#e5e7eb,#9ca3af)",label:"2"},
-    {i:0,h:72,bg:"linear-gradient(180deg,#f0d060,#b8860b)",label:"1"},
-    {i:2,h:40,bg:"linear-gradient(180deg,#e8a06a,#8b5a2b)",label:"3"},
-  ];
-  return `<div style="display:flex;align-items:flex-end;gap:4px;justify-content:center">
-    ${spec.map(sp=>{
-      const o=order[sp.i];if(!o)return "";
-      return `<div style="text-align:center;min-width:64px">
-        <div style="font-size:11px;font-weight:800;color:#e8dcc0;margin-bottom:2px;white-space:nowrap">${deco(o.q)}</div>
-        <div style="font-size:10px;color:${o.v>=0?"#4ade80":"#f87171"};font-weight:800">${fmt1(o.v)}</div>
-        <div style="height:${sp.h}px;background:${sp.bg};border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:rgba(0,0,0,0.55)">${sp.label}</div>
-      </div>`;
-    }).join("")}
-  </div>`;
+  const cell=(o,mood,blockH,blockBg,label)=>`<div style="text-align:center;min-width:56px">
+      <div style="font-size:10px;font-weight:800;color:#e8dcc0;white-space:nowrap">${deco(o.q)}</div>
+      <div style="font-size:9px;color:${o.v>=0?"#4ade80":"#f87171"};font-weight:800">${fmt1(o.v)}</div>
+      <div style="line-height:0;transform:${mood===0?"translateY(1px)":"none"}">${personSVG(isFemale(o.q),mood)}</div>
+      ${blockH>0?`<div style="height:${blockH}px;background:${blockBg};border-radius:5px 5px 0 0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:rgba(0,0,0,0.55)">${label}</div>`:`<div style="height:3px;background:rgba(232,220,192,0.25);border-radius:2px"></div>`}
+    </div>`;
+  const parts=[];
+  // แท่น (สูงลดครึ่ง): เงินซ้าย ทองกลาง ทองแดงขวา
+  if(order[1])parts.push(cell(order[1],1,26,"linear-gradient(180deg,#e5e7eb,#9ca3af)","2"));
+  if(order[0])parts.push(cell(order[0],0,36,"linear-gradient(180deg,#f0d060,#b8860b)","1"));
+  if(order[2])parts.push(cell(order[2],2,20,"linear-gradient(180deg,#e8a06a,#8b5a2b)","3"));
+  // อันดับ 4-6 ยืนพื้นถัดจากที่ 3 หน้าเศร้า
+  order.slice(3,6).forEach(o=>parts.push(cell(o,3,0,"","")));
+  return `<div style="display:flex;align-items:flex-end;gap:3px;justify-content:center">${parts.join("")}</div>`;
 }
 // ── ล้างเริ่ม Session ใหม่ ──
 function clearAll(){
