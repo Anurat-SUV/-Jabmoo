@@ -47,6 +47,24 @@ select{padding:9px 10px;border-radius:10px;border:1px solid rgba(212,175,55,0.4)
 .secTitle{font-size:13px;font-weight:800;color:#d4af37;margin:2px 0 8px;text-align:center;}
 .acc td{font-size:14px;}
 .krow td{color:#f0d060;font-weight:800;}
+.acc{table-layout:fixed;}
+.acc th:first-child,.acc td:first-child{width:32%;text-align:left;}
+.acc th:not(:first-child),.acc td:not(:first-child){width:calc(68%/var(--np,4));}
+.histtab{table-layout:fixed;}
+.histtab td:first-child,.histtab th:first-child{width:32%;text-align:left;}
+.histtab th:not(:first-child),.histtab td:not(:first-child){width:calc(68%/var(--np2,4));}
+.circ{display:inline-block;border:2px solid #f0d060;border-radius:999px;padding:1px 7px;box-shadow:0 0 6px rgba(212,175,55,0.5);}
+#dashOv{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:950;overflow-y:auto;padding:12px;}
+#dashBody{background:radial-gradient(ellipse at 50% 10%,#14361f 0%,#0b1f12 70%);border:1.5px solid rgba(212,175,55,0.5);border-radius:16px;padding:14px;max-width:900px;margin:0 auto;}
+.dashHead{font-family:Georgia,serif;font-size:20px;font-weight:800;color:#d4af37;text-align:center;}
+.dashDate{text-align:center;font-size:12px;color:rgba(232,220,192,0.6);margin-bottom:10px;}
+.dashGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:10px;}
+.dashMini{background:rgba(16,28,20,0.9);border:1px solid rgba(212,175,55,0.25);border-radius:10px;padding:6px;}
+.dashMini table{font-size:9px;}
+.dashMini th,.dashMini td{padding:2px 1px;}
+.dashMini .secTitle{font-size:10px;margin:0 0 3px;}
+.dashBtns{display:flex;gap:8px;justify-content:center;margin:10px 0 2px;}
+
 #padOv{position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;}
 .pad{background:#101c14;border:1.5px solid rgba(212,175,55,0.5);border-radius:18px;padding:16px;width:100%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,0.6);}
 .padTitle{text-align:center;font-size:13px;color:rgba(232,220,192,0.6);margin-bottom:8px;}
@@ -74,6 +92,10 @@ select{padding:9px 10px;border-radius:10px;border:1px solid rgba(212,175,55,0.4)
 function toH(n){if(n>=51)return Math.floor((n+50)/100);if(n<=-51)return Math.ceil((n-50)/100);return 0;}
 function calcSpread(hs){return hs.map((h,i)=>hs.reduce((s,o,j)=>j===i?s:s+(h-o),0));}
 function fmt(n){return (n>0?"+":"")+n;}
+function fmtCell(v,game){
+  const hot=(game==="jabmoo"&&v===788)||(game==="samkong"&&v>=36);
+  return hot?('<span class="circ">'+fmt(v)+'</span>'):fmt(v);
+}
 function cls(n){return n>0?"pos":n<0?"neg":"zer";}
 
 // ── state ──
@@ -270,6 +292,7 @@ function render(){
     </select>
     <button class="btn small" onclick="exportJSON()">💾 Export</button>
     <button class="btn small ${db.night.ended?"danger":""}" onclick="toggleNight()">${db.night.ended?"↩︎ เล่นต่อ":"🏁 จบ Session"}</button>
+    <button class="btn small" onclick="openDash()">🖼 Dashboard</button>
   </div>
   <div id="newBox" style="display:none;margin-top:10px">
     <div class="row">
@@ -308,7 +331,7 @@ function render(){
     const run=[0,0,0,0];
     for(let g=0;g<n;g++){
       s.rounds[g].forEach((v,i)=>run[i]+=v);
-      html+=`<tr><td class="gm">เกม ${g+1}</td>${s.rounds[g].map(v=>`<td class="${cls(v)}">${fmt(v)}</td>`).join("")}</tr>`;
+      html+=`<tr><td class="gm">เกม ${g+1}</td>${s.rounds[g].map(v=>`<td class="${cls(v)}">${fmtCell(v,s.game)}</td>`).join("")}</tr>`;
       if(g>=1){
         html+=`<tr class="runrow"><td class="gm">รวม→${g+1}</td>${run.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
       }
@@ -346,7 +369,7 @@ function render(){
   const kAcc=kByName();
   if(lj.length||ls.length){
     const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
-    html+=`<div class="card"><div class="secTitle">📚 สรุปทุกรอบ</div>`;
+    html+=`<div class="card" style="--np:${names.length}"><div class="secTitle">📚 สรุปทุกรอบ</div>`;
 
     if(lj.length){
       const acc={};
@@ -392,7 +415,7 @@ function render(){
     lj.forEach(r=>names.forEach(p=>{if(r.byName[p]!==undefined)accJ[p]=(accJ[p]||0)+r.byName[p];}));
     ls.forEach(r=>names.forEach(p=>{if(r.byName[p]!==undefined)accS[p]=(accS[p]||0)+r.byName[p];}));
     const d1=db.night.d1||0,d2=db.night.d2||0;
-    html+=`<div class="card"><div class="secTitle">🏁 สรุปจบ Session</div>
+    html+=`<div class="card" style="--np:${names.length}"><div class="secTitle">🏁 สรุปจบ Session</div>
     <div class="row" style="margin-bottom:6px"><span style="font-size:12px;color:rgba(232,220,192,0.6)">ส่วนลดสามกอง:</span>${discChips("d1")}</div>
     <div class="row" style="margin-bottom:10px"><span style="font-size:12px;color:rgba(232,220,192,0.6)">ส่วนลดสุดท้าย:</span>${discChips("d2")}</div>
     <table class="acc"><thead><tr><th style="text-align:left"></th>${names.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;
@@ -422,12 +445,13 @@ function render(){
       x.rounds.forEach(r=>r.forEach((v,i)=>tot[i]+=v));
       const hs=tot.map(toH), sp=calcSpread(hs);
       html+=`<div class="secTitle" style="margin-top:10px;text-align:left">${x.game==="jabmoo"?"🐷 จับหมู":"🃏 สามกอง"} รอบ ${roundNo(x)} · ${dstr(x.startedAt)}</div>
-      <table style="margin-bottom:6px"><thead>
+      <table class="histtab" style="margin-bottom:6px;--np2:${x.players.length}"><thead>
         <tr><th></th>${x.players.map(p=>`<th>${p}</th>`).join("")}</tr>
       </thead><tbody>`;
       x.rounds.forEach((r,g)=>{
-        html+=`<tr><td class="gm">เกม ${g+1}</td>${r.map(v=>`<td class="${cls(v)}">${fmt(v)}</td>`).join("")}</tr>`;
+        html+=`<tr><td class="gm">เกม ${g+1}</td>${r.map(v=>`<td class="${cls(v)}">${fmtCell(v,x.game)}</td>`).join("")}</tr>`;
       });
+      html+=`<tr class="krow"><td class="gm">K</td>${x.k.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>`;
       html+=`<tr class="totrow"><td class="gm">รวมรอบ</td>${tot.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
       if(x.game==="jabmoo"){
         html+=`<tr class="hrow"><td class="gm">หลัก</td>${hs.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>
@@ -441,6 +465,102 @@ function render(){
   app.innerHTML=html;
 }
 function toggleNight(){db.night.ended=!db.night.ended;save();render();}
+
+// ── DASHBOARD ภาพเดียวทั้ง session ──
+function dashHTML(){
+  const lj=summaryByGame("jabmoo"), ls=summaryByGame("samkong");
+  const kAcc=kByName();
+  const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
+  const d=new Date();const p=n=>String(n).padStart(2,"0");
+  const today=p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();
+  let h=`<div class="dashHead">🐷 จับหมู..สร้างสรรค์</div><div class="dashDate">Date ${today}</div>`;
+
+  // บน: สรุปรอบ (ได้/เสีย จับหมู + คะแนนสามกอง) — reuse โครง acc
+  const mkSum=(list,title)=>{
+    if(!list.length)return "";
+    const acc={};
+    let t=`<table class="acc" style="--np:${names.length};margin-bottom:8px"><thead><tr><th>${title}</th>${names.map(q=>`<th>${q}</th>`).join("")}</tr></thead><tbody>`;
+    list.forEach((r,i)=>{
+      t+=`<tr><td class="gm">รอบ ${i+1}</td>${names.map(q=>{
+        const v=r.byName[q];
+        if(v===undefined)return `<td class="zer">—</td>`;
+        acc[q]=(acc[q]||0)+v;
+        return `<td class="${cls(v)}">${fmt(v)}</td>`;
+      }).join("")}</tr>`;
+    });
+    t+=`<tr class="totrow"><td class="gm">รวม</td>${names.map(q=>`<td>${acc[q]!==undefined?fmt(acc[q]):"—"}</td>`).join("")}</tr></tbody></table>`;
+    return t;
+  };
+  h+=mkSum(lj,"🐷 ได้/เสีย")+mkSum(ls,"🃏 สามกอง");
+
+  // สรุป session (grand) — ใช้ discount ปัจจุบัน
+  const accJ={},accS={};
+  lj.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accJ[q]=(accJ[q]||0)+r.byName[q];}));
+  ls.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accS[q]=(accS[q]||0)+r.byName[q];}));
+  const d1=db.night.d1||0,d2=db.night.d2||0;
+  const vJ=names.map(q=>accJ[q]||0);
+  const vS=names.map(q=>Math.round((accS[q]||0)*(100-d1)/100));
+  const vK=names.map(q=>kAcc[q]||0);
+  const grand=names.map((q,i)=>vJ[i]+vS[i]-vK[i]);
+  const net=grand.map(v=>Math.round(v*(100-d2)/100));
+  h+=`<table class="acc" style="--np:${names.length}"><tbody>
+    <tr class="krow"><td class="gm">K สะสม (−1)</td>${vK.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>
+    <tr class="totrow"><td class="gm">Grand${d1?` (3กอง−${d1}%)`:""}</td>${grand.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>
+    ${d2?`<tr class="totrow" style="filter:brightness(1.2)"><td class="gm">สุทธิ (−${d2}%)</td>${net.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`:""}
+  </tbody></table>`;
+
+  // ล่าง: ทุกรอบตัวเล็ก (ใหม่→เก่า)
+  const hist=db.sessions.filter(x=>x.rounds.length>0).sort((a,b)=>b.startedAt-a.startedAt);
+  if(hist.length){
+    h+=`<div class="dashGrid">`;
+    hist.forEach(x=>{
+      const tot=[0,0,0,0];x.rounds.forEach(r=>r.forEach((v,i)=>tot[i]+=v));
+      h+=`<div class="dashMini"><div class="secTitle">${x.game==="jabmoo"?"🐷":"🃏"} รอบ ${roundNo(x)} · ${dstr(x.startedAt)}</div>
+      <table style="width:100%"><thead><tr><th></th>${x.players.map(q=>`<th>${q}</th>`).join("")}</tr></thead><tbody>`;
+      x.rounds.forEach((r,g)=>{h+=`<tr><td class="gm">${g+1}</td>${r.map(v=>`<td class="${cls(v)}">${fmtCell(v,x.game)}</td>`).join("")}</tr>`;});
+      h+=`<tr class="totrow"><td class="gm">รวม</td>${tot.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>
+      <tr class="krow"><td class="gm">K</td>${x.k.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>
+      </tbody></table></div>`;
+    });
+    h+=`</div>`;
+  }
+  return h;
+}
+function openDash(){
+  const host=document.getElementById("padHost");
+  host.innerHTML=`<div id="dashOv">
+    <div class="dashBtns">
+      <button class="btn primary" onclick="snapDash()">📷 บันทึกเป็นรูป</button>
+      <button class="btn" onclick="document.getElementById('padHost').innerHTML=''">ปิด</button>
+    </div>
+    <div id="dashBody">${dashHTML()}</div>
+    <div class="hint" style="margin-top:8px">ถ้าบันทึกรูปไม่ได้ ให้แคปหน้าจอหน้านี้แทนได้เลย</div>
+  </div>`;
+}
+async function snapDash(){
+  try{
+    if(!window.html2canvas){
+      await new Promise((res,rej)=>{
+        const sc=document.createElement("script");
+        sc.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+        sc.onload=res;sc.onerror=rej;document.head.appendChild(sc);
+      });
+    }
+    const el=document.getElementById("dashBody");
+    const canvas=await html2canvas(el,{backgroundColor:"#0b1f12",scale:2,useCORS:true});
+    const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
+    const file=new File([blob],"jabmoo-session.png",{type:"image/png"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:"จับหมู session"});return;
+    }
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="jabmoo-session.png";
+    document.body.appendChild(a);a.click();a.remove();
+  }catch(e){
+    if(e&&e.name==="AbortError")return;
+    alert("บันทึกรูปอัตโนมัติไม่ได้บนเครื่องนี้ — แคปหน้าจอหน้านี้แทนได้เลย");
+  }
+}
 function setDisc(key,v){
   if(v==="custom"){
     const x=prompt("% ส่วนลด (0-100)",db.night[key]||0);
