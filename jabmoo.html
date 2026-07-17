@@ -34,7 +34,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0718.1";
+  var VER="v0718.2";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -51,6 +51,47 @@ select{appearance:auto;}
   }
   window.addEventListener("error",function(e){show((e.message||"?")+(e.lineno?" @line "+e.lineno:""));});
   window.addEventListener("unhandledrejection",function(e){show("promise: "+((e.reason&&e.reason.message)||e.reason||"?"));});
+
+  // ── UPDATE CHECK ─────────────────────────────────────────────
+  // PWA on iPhone caches this HTML hard. Fetch the live file (cache-busted),
+  // compare VER, and show an update button that reloads with a fresh URL.
+  var lastCheck=0;
+  function showUpdate(newVer){
+    if(document.getElementById("jm-upd"))return;
+    var d=document.createElement("div");d.id="jm-upd";
+    d.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:calc(46px + env(safe-area-inset-top));z-index:99998;background:#065f46;color:#fff;padding:8px 14px;border-radius:22px;font:13px/1.4 sans-serif;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;gap:10px";
+    var s=document.createElement("span");s.textContent="\u0E21\u0E35\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E0A\u0E31\u0E19\u0E43\u0E2B\u0E21\u0E48 "+newVer;
+    var b=document.createElement("button");b.textContent="\u27F3 \u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15";
+    b.style.cssText="padding:6px 12px;border:none;border-radius:16px;background:#fff;color:#065f46;font-weight:800;font-size:13px";
+    b.onclick=function(){
+      var u=location.pathname+"?v="+encodeURIComponent(newVer);
+      location.replace(u);
+    };
+    var x=document.createElement("button");x.textContent="\u2715";
+    x.style.cssText="padding:2px 6px;border:none;border-radius:12px;background:transparent;color:#a7f3d0;font-size:13px";
+    x.onclick=function(){d.remove();};
+    d.appendChild(s);d.appendChild(b);d.appendChild(x);document.body.appendChild(d);
+  }
+  function checkUpdate(){
+    var now=Date.now();
+    if(now-lastCheck<5*60*1000)return; // at most once per 5 min
+    lastCheck=now;
+    try{
+      if(location.protocol==="file:")return;
+      fetch(location.pathname+"?jmchk="+now,{cache:"no-store"})
+        .then(function(r){return r.ok?r.text():"";})
+        .then(function(t){
+          var m=t&&t.match(/var VER="([^"]+)"/);
+          if(m&&m[1]&&m[1]!==VER)showUpdate(m[1]);
+        })
+        .catch(function(){});
+    }catch(e){}
+  }
+  if(document.readyState==="complete")checkUpdate();
+  else window.addEventListener("load",function(){setTimeout(checkUpdate,1500);});
+  document.addEventListener("visibilitychange",function(){
+    if(document.visibilityState==="visible")checkUpdate();
+  });
 })();
 </script>
 <script type="text/babel">
