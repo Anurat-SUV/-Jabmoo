@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="สมุดคะแนน">
+<meta name="theme-color" content="#0b1f12">
+<title>สมุดคะแนน จับหมู & สามกอง</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(ellipse at 50% 20%,#14361f 0%,#0b1f12 60%,#060f09 100%);min-height:100vh;min-height:100dvh;color:#e8dcc0;padding:calc(10px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom));}
+button{font-family:inherit;cursor:pointer;user-select:none;}
+.card{background:rgba(16,28,20,0.92);border:1px solid rgba(212,175,55,0.28);border-radius:14px;padding:12px;margin:0 auto 12px;max-width:900px;}
+h1{font-family:Georgia,serif;font-size:22px;color:#d4af37;text-align:center;margin-bottom:2px;}
+.sub{text-align:center;font-size:11px;color:rgba(232,220,192,0.5);margin-bottom:10px;}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;}
+.btn{padding:10px 16px;border-radius:10px;border:1px solid rgba(212,175,55,0.4);background:rgba(255,255,255,0.06);color:#d4af37;font-size:14px;font-weight:700;}
+.btn.primary{background:linear-gradient(135deg,#d4af37,#f0d060,#d4af37);color:#3b2d00;border:none;box-shadow:0 2px 10px rgba(212,175,55,0.35);}
+.btn.small{padding:6px 10px;font-size:12px;}
+.btn.danger{color:#f87171;border-color:rgba(248,113,113,0.4);}
+.seg{display:flex;border:1px solid rgba(212,175,55,0.4);border-radius:10px;overflow:hidden;}
+.seg button{padding:9px 16px;border:none;background:transparent;color:#d4af37;font-size:14px;font-weight:700;}
+.seg button.on{background:#d4af37;color:#3b2d00;}
+table{width:100%;border-collapse:collapse;font-size:15px;}
+th,td{padding:7px 4px;text-align:center;border-bottom:1px solid rgba(212,175,55,0.15);}
+th{color:rgba(232,220,192,0.6);font-size:12px;font-weight:600;}
+td.gm{color:rgba(232,220,192,0.55);font-size:12px;white-space:nowrap;}
+.pos{color:#4ade80;font-weight:700;}
+.neg{color:#f87171;font-weight:700;}
+.zer{color:#9ca3af;}
+.runrow td{background:rgba(212,175,55,0.07);font-weight:700;color:#d9c470;font-size:13px;border-bottom:1px solid rgba(212,175,55,0.25);}
+.totrow td{background:rgba(212,175,55,0.16);font-weight:900;font-size:16px;color:#f0d060;border-top:2px solid rgba(212,175,55,0.5);}
+.hrow td{color:#93c5fd;font-weight:800;}
+.sprow td{color:#c4b5fd;font-weight:800;}
+.pname{font-size:15px;font-weight:800;color:#e8dcc0;padding:6px 2px;border-radius:8px;min-width:64px;user-select:none;touch-action:none;}
+.pname.drag{opacity:0.4;}
+.pname.over{outline:2px dashed #d4af37;outline-offset:2px;}
+.kbtn{width:44px;height:34px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);font-size:14px;font-weight:900;color:rgba(232,220,192,0.10);touch-action:manipulation;}
+.kbtn.k1{color:#111;background:#e8dcc0;}
+.kbtn.k2{color:#fff;background:#7f1d1d;border-color:#d4af37;}
+.scorecell{width:100%;max-width:84px;padding:12px 4px;font-size:18px;font-weight:800;text-align:center;border-radius:10px;border:1.5px dashed rgba(212,175,55,0.45);background:rgba(255,255,255,0.06);color:#fff;min-height:46px;margin:0 auto;cursor:pointer;}
+.scorecell.filled{border-style:solid;background:rgba(212,175,55,0.10);}
+.hint{font-size:11px;color:rgba(232,220,192,0.45);text-align:center;margin-top:6px;}
+select{padding:9px 10px;border-radius:10px;border:1px solid rgba(212,175,55,0.4);background:rgba(16,28,20,0.95);color:#e8dcc0;font-size:13px;max-width:280px;}
+.secTitle{font-size:13px;font-weight:800;color:#d4af37;margin:2px 0 8px;text-align:center;}
+.acc td{font-size:14px;}
+.krow td{color:#f0d060;font-weight:800;}
+.acc{table-layout:fixed;}
+.acc th:first-child,.acc td:first-child{width:32%;text-align:left;}
+.acc th:not(:first-child),.acc td:not(:first-child){width:calc(68%/var(--np,4));}
+.histtab{table-layout:fixed;}
+.histtab td:first-child,.histtab th:first-child{width:32%;text-align:left;}
+.histtab th:not(:first-child),.histtab td:not(:first-child){width:calc(68%/var(--np2,4));}
+.circ{display:inline-block;border:2px solid #f0d060;border-radius:999px;padding:1px 7px;box-shadow:0 0 6px rgba(212,175,55,0.5);}
+#dashOv{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:950;overflow-y:auto;padding:12px;}
+#dashBody{background:radial-gradient(ellipse at 50% 10%,#14361f 0%,#0b1f12 70%);border:1.5px solid rgba(212,175,55,0.5);border-radius:16px;padding:14px;max-width:900px;margin:0 auto;}
+.dashHead{font-family:Georgia,serif;font-size:20px;font-weight:800;color:#d4af37;text-align:center;}
+.dashDate{text-align:center;font-size:12px;color:rgba(232,220,192,0.6);margin-bottom:10px;}
+.dashGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:10px;}
+.dashMini{background:rgba(16,28,20,0.9);border:1px solid rgba(212,175,55,0.25);border-radius:10px;padding:6px;}
+.dashMini table{font-size:8px;table-layout:fixed;}
+.dashMini th,.dashMini td{padding:2px 1px;}
+.dashMini .secTitle{font-size:10px;margin:0 0 3px;}
+.dashMini .totrow td{font-size:9px;padding:2px 1px;}
+.dashMini .krow td{font-size:8px;padding:2px 1px;}
+.dashMini .circ{padding:0 3px;border-width:1px;box-shadow:none;}
+.dashBtns{display:flex;gap:8px;justify-content:center;margin:10px 0 2px;}
+
+#padOv{position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;}
+.pad{background:#101c14;border:1.5px solid rgba(212,175,55,0.5);border-radius:18px;padding:16px;width:100%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,0.6);}
+.padTitle{text-align:center;font-size:13px;color:rgba(232,220,192,0.6);margin-bottom:8px;}
+.padVal{text-align:center;font-size:40px;font-weight:900;color:#fff;min-height:54px;margin-bottom:12px;letter-spacing:2px;}
+.padVal .neg{color:#f87171;}
+.padVal .pos{color:#4ade80;}
+.signBtn{flex:1;padding:26px 0;font-size:44px;font-weight:900;border-radius:16px;border:2px solid rgba(212,175,55,0.5);}
+.signPlus{background:rgba(74,222,128,0.15);color:#4ade80;}
+.signMinus{background:rgba(248,113,113,0.15);color:#f87171;}
+.numgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.numgrid button{padding:16px 0;font-size:26px;font-weight:800;border-radius:12px;border:1px solid rgba(212,175,55,0.35);background:rgba(255,255,255,0.07);color:#fff;}
+.numgrid .enter{background:linear-gradient(135deg,#d4af37,#f0d060,#d4af37);color:#3b2d00;border:none;font-size:20px;}
+.numgrid .del{color:#f87171;}
+.padCancel{width:100%;margin-top:10px;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.07);color:#9ca3af;font-size:13px;}
+</style>
+</head>
+<body>
+<h1>🐷 สมุดคะแนน</h1>
+<div class="sub">จับหมู & สามกอง · แตะช่องคะแนนเพื่อกรอก · เก็บอัตโนมัติในเครื่อง</div>
+<div id="app"></div>
+<div id="padHost"></div>
+<script>
+"use strict";
+// ── logic เดียวกับเกมจับหมู ──
+function toH(n){if(n>=51)return Math.floor((n+50)/100);if(n<=-51)return Math.ceil((n-50)/100);return 0;}
+function calcSpread(hs){return hs.map((h,i)=>hs.reduce((s,o,j)=>j===i?s:s+(h-o),0));}
+function fmt(n){return (n>0?"+":"")+n;}
+function fmtCell(v,game){
+  const hot=(game==="jabmoo"&&v===788)||(game==="samkong"&&v>=36);
+  return hot?('<span class="circ">'+fmt(v)+'</span>'):fmt(v);
+}
+function cls(n){return n>0?"pos":n<0?"neg":"zer";}
+
+// ── state ──
+const KEY="jm-scorepad-v2";
+let db={sessions:[],activeId:null};
+try{
+  const raw=localStorage.getItem(KEY)||localStorage.getItem("jm-scorepad-v1");
+  if(raw)db=JSON.parse(raw);
+}catch(e){}
+if(!db.night)db.night={ended:false,d1:0,d2:0}; // d1=%ลดสามกอง, d2=%ลดสุดท้าย
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db));}catch(e){}}
+function uid(){return Math.random().toString(36).slice(2,9);}
+function active(){return db.sessions.find(s=>s.id===db.activeId)||null;}
+function newSession(game,numGames){
+  const prev=active();
+  const s={id:uid(),game,numGames,startedAt:Date.now(),
+    players:prev?prev.players.slice():["A","Kob","Ped","Ae"],
+    k:[0,0,0,0],rounds:[]};
+  db.sessions.unshift(s);db.activeId=s.id;save();render();
+}
+function dstr(t){const d=new Date(t);const p=n=>String(n).padStart(2,"0");
+  return p(d.getDate())+"/"+p(d.getMonth()+1)+" "+p(d.getHours())+":"+p(d.getMinutes());}
+
+// ── pending inputs (ค่าที่กรอกค้างก่อนบันทึกเกม) ──
+let pend=[null,null,null,null];
+function pendClear(){pend=[null,null,null,null];}
+
+// ── K button: กด +1 ไม่จำกัด (K,2K,3K…), กดค้าง = ล้าง ──
+let kTimer=null,kLong=false;
+function kDown(i){kLong=false;kTimer=setTimeout(()=>{kLong=true;const s=active();if(s){s.k[i]=0;save();render();}},600);}
+function kUp(i){clearTimeout(kTimer);if(kLong)return;const s=active();if(!s)return;s.k[i]++;save();render();}
+
+// ── drag สลับชื่อ ──
+let dragIdx=null,dragMoved=false,dragX0=0,dragY0=0;
+function dragStart(e,i){dragIdx=i;dragMoved=false;dragX0=e.clientX;dragY0=e.clientY;e.target.classList.add("drag");e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);}
+function dragMove(e){
+  if(dragIdx===null)return;
+  if(Math.abs(e.clientX-dragX0)+Math.abs(e.clientY-dragY0)>10)dragMoved=true;
+  document.querySelectorAll(".pname").forEach(el=>el.classList.remove("over"));
+  const t=document.elementFromPoint?document.elementFromPoint(e.clientX,e.clientY):null;
+  const cell=t&&t.closest?t.closest(".pname"):null;
+  if(cell&&+cell.dataset.idx!==dragIdx)cell.classList.add("over");
+}
+function dragEnd(e){
+  if(dragIdx===null)return;
+  if(!dragMoved){const i=dragIdx;dragIdx=null;renameP(i);return;} // แตะเฉยๆ = แก้ชื่อ
+  const t=document.elementFromPoint?document.elementFromPoint(e.clientX,e.clientY):null;
+  const cell=t&&t.closest?t.closest(".pname"):null;
+  const s=active();
+  if(cell&&s){
+    const j=+cell.dataset.idx;
+    if(j!==dragIdx){
+      [s.players[dragIdx],s.players[j]]=[s.players[j],s.players[dragIdx]];
+      [s.k[dragIdx],s.k[j]]=[s.k[j],s.k[dragIdx]];
+      s.rounds.forEach(r=>{[r[dragIdx],r[j]]=[r[j],r[dragIdx]];});
+      [pend[dragIdx],pend[j]]=[pend[j],pend[dragIdx]];
+      save();
+    }
+  }
+  dragIdx=null;render();
+}
+function renameP(i){
+  const s=active();if(!s)return;
+  const nm=prompt("ชื่อผู้เล่น",s.players[i]);
+  if(nm&&nm.trim()){s.players[i]=nm.trim().slice(0,10);save();render();}
+}
+
+// ── KEYPAD ลอย: แตะช่อง → เลือก +/− ใหญ่ → กดเลข → Enter ──
+let pad=null; // {idx, sign:null|1|-1, digits:""}
+function openPad(i){
+  const s=active();if(!s)return;
+  pad={idx:i,sign:null,digits:""};
+  renderPad();
+}
+function padSign(sg){if(!pad)return;pad.sign=sg;renderPad();}
+function padDigit(d){if(!pad||pad.sign===null)return;if(pad.digits.length>=4)return;if(pad.digits==="0")pad.digits="";pad.digits+=d;renderPad();}
+function padDel(){if(!pad)return;if(pad.digits.length)pad.digits=pad.digits.slice(0,-1);else pad.sign=null;renderPad();}
+function padEnter(){
+  if(!pad||pad.sign===null||!pad.digits.length)return;
+  pend[pad.idx]=pad.sign*parseInt(pad.digits,10);
+  pad=null;renderPad();render();
+}
+function padCancel(){pad=null;renderPad();}
+function renderPad(){
+  const host=document.getElementById("padHost");
+  if(!pad){host.innerHTML="";return;}
+  const s=active();
+  const valTxt=pad.sign===null?"&nbsp;":(pad.sign<0?'<span class="neg">−</span>':'<span class="pos">+</span>')+(pad.digits||"");
+  let inner;
+  if(pad.sign===null){
+    inner=`<div class="row" style="gap:12px;flex-wrap:nowrap">
+      <button class="signBtn signPlus" onclick="padSign(1)">＋</button>
+      <button class="signBtn signMinus" onclick="padSign(-1)">−</button>
+    </div>`;
+  } else {
+    inner=`<div class="numgrid">
+      ${[1,2,3,4,5,6,7,8,9].map(d=>`<button onclick="padDigit('${d}')">${d}</button>`).join("")}
+      <button class="del" onclick="padDel()">⌫</button>
+      <button onclick="padDigit('0')">0</button>
+      <button class="enter" onclick="padEnter()">Enter ↵</button>
+    </div>`;
+  }
+  host.innerHTML=`<div id="padOv" onclick="if(event.target.id==='padOv')padCancel()">
+    <div class="pad">
+      <div class="padTitle">คะแนน — ${s?s.players[pad.idx]:""} ${pad.sign===null?"(เลือก + หรือ − ก่อน)":""}</div>
+      <div class="padVal">${valTxt}</div>
+      ${inner}
+      <button class="padCancel" onclick="padCancel()">ยกเลิก</button>
+    </div>
+  </div>`;
+}
+
+// ── บันทึกเกม ──
+function addRound(){
+  const s=active();if(!s)return;
+  if(s.game==="jabmoo")pend=pend.map(v=>v===null?-50:v); // จับหมู: ว่าง = -50 (ไม่ได้ไพ่คะแนน)
+  if(pend.some(v=>v===null)){alert("กรอกคะแนนให้ครบ 4 คน (แตะช่องคะแนน)");return;}
+  if(s.game==="samkong"){
+    const sum=pend.reduce((a,b)=>a+b,0);
+    if(sum!==0){alert("สามกอง: ผลรวม 4 คนต้อง = 0 (ตอนนี้ = "+fmt(sum)+")");return;}
+  }
+  s.rounds.push(pend.slice());pendClear();save();render();
+}
+function undoRound(){
+  const s=active();if(!s||!s.rounds.length)return;
+  if(confirm("ลบเกมล่าสุด?")){s.rounds.pop();save();render();}
+}
+async function exportJSON(){
+  const txt=JSON.stringify(db,null,1);
+  // 1) iOS/PWA: share sheet (Save to Files ได้)
+  try{
+    const file=new File([txt],"scorepad-backup.json",{type:"application/json"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:"scorepad backup"});
+      return;
+    }
+  }catch(e){if(e&&e.name==="AbortError")return;}
+  // 2) download ปกติ
+  try{
+    const blob=new Blob([txt],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="scorepad-backup.json";
+    document.body.appendChild(a);a.click();a.remove();
+    return;
+  }catch(e){}
+  // 3) fallback: คัดลอก
+  try{await navigator.clipboard.writeText(txt);alert("คัดลอกข้อมูลแล้ว — วางลง Notes เพื่อเก็บสำรองได้");}
+  catch(e){alert("Export ไม่สำเร็จบนเครื่องนี้");}
+}
+
+// ── สรุปต่อรอบ ──
+// จับหมู: ค่าของรอบ = ได้/เสีย (spread ของหลัก) ; สามกอง: ค่าของรอบ = คะแนนรวม
+function sessionResult(s){
+  const tot=[0,0,0,0];
+  s.rounds.forEach(r=>r.forEach((v,i)=>tot[i]+=v));
+  if(s.game==="jabmoo")return calcSpread(tot.map(toH));
+  return tot;
+}
+function summaryByGame(game){
+  const list=[];
+  db.sessions.filter(s=>s.game===game&&s.rounds.length>0).forEach(s=>{
+    const res=sessionResult(s);
+    const byName={};
+    s.players.forEach((p,i)=>{byName[p]=(byName[p]||0)+res[i];});
+    list.push({startedAt:s.startedAt,byName});
+  });
+  list.sort((a,b)=>a.startedAt-b.startedAt);
+  return list;
+}
+function kByName(){
+  const acc={};
+  db.sessions.forEach(s=>s.players.forEach((p,i)=>{acc[p]=(acc[p]||0)+(s.k[i]||0);}));
+  return acc;
+}
+
+function fmt1(n){const r=Math.round(n*10)/10;const s=Number.isInteger(r)?String(Math.abs(r)):Math.abs(r).toFixed(1);return (r>0?"+":r<0?"-":"")+s;}
+function cls1(n){return n>0.001?"pos":n<-0.001?"neg":"zer";}
+// รวมยอดทั้งคืน + ส่วนลด — K แยกต่างหาก ไม่รวมยอดใดๆ
+// เศษ: .5 พอดีคงไว้ นอกนั้นตัดทศนิยมทิ้ง (toward zero) เช่น 19.7→19, −25.6→−25
+function truncKeepHalf(x){
+  const r=Math.round(x*10)/10;
+  const dec=Math.round(Math.abs(r*10))%10;
+  if(dec===5)return r;
+  return Math.trunc(r);
+}
+function computeFinal(){
+  const lj=summaryByGame("jabmoo"), ls=summaryByGame("samkong");
+  const kAcc=kByName();
+  const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
+  const accJ={},accS={};
+  lj.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accJ[q]=(accJ[q]||0)+r.byName[q];}));
+  ls.forEach(r=>names.forEach(q=>{if(r.byName[q]!==undefined)accS[q]=(accS[q]||0)+r.byName[q];}));
+  const d1=db.night.d1||0,d2=db.night.d2||0;
+  const vJ=names.map(q=>accJ[q]||0);
+  const vS0=names.map(q=>accS[q]||0);
+  const vS1=vS0.map(v=>Math.round(v*(100-d1)/100*10)/10);   // ทศนิยม 1 ตำแหน่ง
+  const vK=names.map(q=>kAcc[q]||0);                         // แสดงแยก ไม่เข้ายอด
+  const grand=names.map((q,i)=>Math.round((vJ[i]+vS1[i])*10)/10);
+  const net=grand.map(v=>truncKeepHalf(v*(100-d2)/100));
+  return {names,vJ,vS0,vS1,vK,grand,net,d1,d2};
+}
+// ลำดับแถว: จับหมู → สามกอง → ส่วนลด3กอง → 3กองหลังลด → Grand → K(แยก) → ส่วนลดสุดท้าย → Grand หลังลด
+function finalRows(f){
+  const N=f.names.length;
+  let h=`<table class="acc" style="--np:${N}"><thead><tr><th></th>${f.names.map(q=>`<th>${q}</th>`).join("")}</tr></thead><tbody>`;
+  h+=`<tr><td class="gm">🐷 รวมจับหมู</td>${f.vJ.map(v=>`<td class="${cls1(v)}">${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr><td class="gm">🃏 รวมสามกอง</td>${f.vS0.map(v=>`<td class="${cls1(v)}">${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr><td class="gm">ส่วนลดสามกอง −${f.d1}%</td>${f.vS0.map((v,i)=>{const dd=Math.round((f.vS1[i]-v)*10)/10;return `<td class="${cls1(dd)}">${dd===0?"0":fmt1(dd)}</td>`;}).join("")}</tr>`;
+  h+=`<tr><td class="gm">สามกองหลังส่วนลด</td>${f.vS1.map(v=>`<td class="${cls1(v)}">${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr class="totrow"><td class="gm">Grand Total</td>${f.grand.map(v=>`<td>${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`<tr class="krow"><td class="gm">K (แยกต่างหาก)</td>${f.vK.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>`;
+  h+=`<tr><td class="gm">ส่วนลดสุดท้าย −${f.d2}%</td>${f.grand.map((v,i)=>{const dd=Math.round(-v*f.d2/100*10)/10;return `<td class="${cls1(dd)}">${dd===0?"0":fmt1(dd)}</td>`;}).join("")}</tr>`;
+  h+=`<tr class="totrow" style="filter:brightness(1.2)"><td class="gm">Grand หลังส่วนลด</td>${f.net.map(v=>`<td>${fmt1(v)}</td>`).join("")}</tr>`;
+  h+=`</tbody></table>
+  <div class="hint">Grand = จับหมู + สามกอง(หลังส่วนลด) · K แยกไม่รวมยอด · เศษ .5 คงไว้ นอกนั้นตัดทศนิยม</div>`;
+  return h;
+}
+// ── ตัวการ์ตูน + แท่นรางวัล ──
+function isFemale(name){
+  const n=(name||"").trim().toLowerCase();
+  return n==="gung"||n.indexOf("กุ้ง")>=0;
+}
+// mood: 0=แชมป์ชูสองแขน 1=ชูแขนเดียว 2=ยิ้มยืน 3=เศร้าคอตก
+function personSVG(female,mood){
+  const skin="#f3c99b";
+  const shirt=female?"#e879a9":"#3b82f6";
+  const sad=mood>=3;
+  const headY=sad?11:7, headX=17+(sad?2:0);
+  const smile=sad
+    ?`<path d="M ${headX-2} ${headY+2.6} q 2 -1.6 4 0" stroke="#5b3a1e" stroke-width="0.9" fill="none"/>`
+    :`<path d="M ${headX-2} ${headY+1.6} q 2 1.8 4 0" stroke="#5b3a1e" stroke-width="0.9" fill="none"/>`;
+  const hair=female
+    ?`<path d="M ${headX-5.5} ${headY} q 0 -6.5 5.5 -6.5 q 5.5 0 5.5 6.5 l 0 5 q -1.5 1.5 -3 0 l 0 -3 q -2.5 1.5 -5 0 l 0 3 q -1.5 1.5 -3 0 z" fill="#4a2c17"/>`
+    :`<path d="M ${headX-5} ${headY-1} q 0 -5 5 -5 q 5 0 5 5 z" fill="#2d1a0e"/>`;
+  // แขน
+  let arms="";
+  if(mood===0)arms=`<line x1="13" y1="20" x2="6" y2="12" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="20" x2="28" y2="12" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  else if(mood===1)arms=`<line x1="13" y1="20" x2="6" y2="13" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="21" x2="27" y2="26" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  else if(mood===2)arms=`<line x1="13" y1="21" x2="7" y2="26" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="21" x2="27" y2="26" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  else arms=`<line x1="13" y1="22" x2="10" y2="30" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/><line x1="21" y1="22" x2="24" y2="30" stroke="${skin}" stroke-width="2.4" stroke-linecap="round"/>`;
+  // ตัว
+  const body=female
+    ?`<path d="M 17 16 L 23 32 L 11 32 Z" fill="${shirt}"/>`
+    :`<rect x="13" y="16" width="8" height="15" rx="3" fill="${shirt}"/>`;
+  const legs=`<line x1="15" y1="${female?32:30}" x2="15" y2="40" stroke="#374151" stroke-width="2.6" stroke-linecap="round"/><line x1="19" y1="${female?32:30}" x2="19" y2="40" stroke="#374151" stroke-width="2.6" stroke-linecap="round"/>`;
+  const eyes=sad
+    ?`<line x1="${headX-3}" y1="${headY}" x2="${headX-1.4}" y2="${headY+0.6}" stroke="#3a2410" stroke-width="0.9"/><line x1="${headX+3}" y1="${headY}" x2="${headX+1.4}" y2="${headY+0.6}" stroke="#3a2410" stroke-width="0.9"/>`
+    :`<circle cx="${headX-2}" cy="${headY-0.5}" r="0.85" fill="#3a2410"/><circle cx="${headX+2}" cy="${headY-0.5}" r="0.85" fill="#3a2410"/>`;
+  return `<svg width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg">
+    ${body}${arms}
+    <circle cx="${headX}" cy="${headY}" r="5" fill="${skin}"/>
+    ${hair}${eyes}${smile}${legs}
+  </svg>`;
+}
+function crownCircle(name){
+  let crown=false,circ=0;
+  db.sessions.forEach(s=>{
+    const idx=s.players.indexOf(name);
+    if(idx<0)return;
+    s.rounds.forEach(r=>{
+      if(s.game==="jabmoo"&&r[idx]===788)crown=true;
+      if(s.game==="samkong"&&r[idx]>=36)circ++;
+    });
+  });
+  return {crown,circ};
+}
+function podiumHTML(f){
+  if(!f.names.length)return "";
+  const order=f.names.map((q,i)=>({q,v:f.net[i]})).sort((a,b)=>b.v-a.v);
+  const deco=q=>{const c=crownCircle(q);return (c.crown?"👑":"")+q+(c.circ?(" "+"⭕".repeat(Math.min(c.circ,4))+(c.circ>4?"×"+c.circ:"")):"");};
+  const cell=(o,mood,blockH,blockBg,label)=>`<div style="text-align:center;min-width:56px">
+      <div style="font-size:10px;font-weight:800;color:#e8dcc0;white-space:nowrap">${deco(o.q)}</div>
+      <div style="font-size:9px;color:${o.v>=0?"#4ade80":"#f87171"};font-weight:800">${fmt1(o.v)}</div>
+      <div style="line-height:0;transform:${mood===0?"translateY(1px)":"none"}">${personSVG(isFemale(o.q),mood)}</div>
+      ${blockH>0?`<div style="height:${blockH}px;background:${blockBg};border-radius:5px 5px 0 0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:rgba(0,0,0,0.55)">${label}</div>`:`<div style="height:3px;background:rgba(232,220,192,0.25);border-radius:2px"></div>`}
+    </div>`;
+  const parts=[];
+  // แท่น (สูงลดครึ่ง): เงินซ้าย ทองกลาง ทองแดงขวา
+  if(order[1])parts.push(cell(order[1],1,26,"linear-gradient(180deg,#e5e7eb,#9ca3af)","2"));
+  if(order[0])parts.push(cell(order[0],0,36,"linear-gradient(180deg,#f0d060,#b8860b)","1"));
+  if(order[2])parts.push(cell(order[2],2,20,"linear-gradient(180deg,#e8a06a,#8b5a2b)","3"));
+  // อันดับ 4-6 ยืนพื้นถัดจากที่ 3 หน้าเศร้า
+  order.slice(3,6).forEach(o=>parts.push(cell(o,3,0,"","")));
+  return `<div style="display:flex;align-items:flex-end;gap:3px;justify-content:center">${parts.join("")}</div>`;
+}
+// ── ล้างเริ่ม Session ใหม่ ──
+function clearAll(){
+  if(!confirm("เริ่ม Session ใหม่?\nข้อมูลทุกรอบจะถูกลบ — แนะนำกด 🖼 Dashboard บันทึกรูป หรือ 💾 Export ก่อน"))return;
+  db={sessions:[],activeId:null,night:{ended:false,d1:0,d2:0}};
+  pendClear();save();render();
+}
+// เลขรอบต่อประเภทเกม (รอบ 1 = เก่าสุด)
+function roundNo(sess){
+  const same=db.sessions.filter(x=>x.game===sess.game).sort((a,b)=>a.startedAt-b.startedAt);
+  return same.findIndex(x=>x.id===sess.id)+1;
+}
+// ── render ──
+const app=document.getElementById("app");
+function render(){
+  const s=active();
+  let html="";
+
+  html+=`<div class="card"><div class="row">
+    <button class="btn primary" onclick="showNew()">+ รอบใหม่</button>
+    <select onchange="db.activeId=this.value;pendClear();save();render()">${
+      db.sessions.length?db.sessions.map(x=>
+        `<option value="${x.id}" ${x.id===db.activeId?"selected":""}>${x.game==="jabmoo"?"🐷 จับหมู":"🃏 สามกอง"} · ${dstr(x.startedAt)} (${x.rounds.length}/${x.numGames})</option>`).join("")
+      :`<option>— ยังไม่มีรอบ —</option>`}
+    </select>
+    <button class="btn small" onclick="exportJSON()">💾 Export</button>
+    <button class="btn small ${db.night.ended?"danger":""}" onclick="toggleNight()">${db.night.ended?"↩︎ เล่นต่อ":"🏁 จบ Session"}</button>
+    <button class="btn small" onclick="openDash()">🖼 Dashboard</button>
+    <button class="btn small danger" onclick="clearAll()">🗑 Session ใหม่</button>
+  </div>
+  <div id="newBox" style="display:none;margin-top:10px">
+    <div class="row">
+      <div class="seg" id="segGame">
+        <button class="on" data-g="jabmoo">🐷 จับหมู</button>
+        <button data-g="samkong">🃏 สามกอง</button>
+      </div>
+      <div class="seg" id="segN">
+        <button data-n="4">4 เกม</button>
+        <button class="on" data-n="8">8 เกม</button>
+      </div>
+      <button class="btn primary" onclick="createFromBox()">เริ่ม!</button>
+    </div>
+  </div></div>`;
+
+  if(s){
+    const n=s.rounds.length;
+    const tot=[0,0,0,0];
+    s.rounds.forEach(r=>r.forEach((v,i)=>tot[i]+=v));
+    const hs=tot.map(toH), sp=calcSpread(hs);
+
+    html+=`<div class="card">
+    <div class="secTitle">${s.game==="jabmoo"?"🐷 จับหมู":"🃏 สามกอง"} รอบ ${roundNo(s)} · เริ่ม ${dstr(s.startedAt)} · เกมที่ ${Math.min(n+1,s.numGames)}/${s.numGames}${n>=s.numGames?" — จบรอบ 🏁":""}</div>
+    <table><thead>
+      <tr><th></th>${[0,1,2,3].map(i=>{
+        const kc=s.k[i]===1?"k1":s.k[i]>=2?"k2":"";
+        const kt=s.k[i]>=2?(s.k[i]+"K"):"K";
+        return `<th><button class="kbtn ${kc}" onpointerdown="kDown(${i})" onpointerup="kUp(${i})" onpointercancel="clearTimeout(kTimer)">${kt}</button></th>`;
+      }).join("")}</tr>
+      <tr><th style="font-size:10px">แตะชื่อ = แก้ชื่อ<br>ลากไปทับอีกช่อง = สลับ</th>${[0,1,2,3].map(i=>
+        `<th><div class="pname" data-idx="${i}"
+          onpointerdown="dragStart(event,${i})" onpointermove="dragMove(event)" onpointerup="dragEnd(event)">${s.players[i]}</div></th>`).join("")}</tr>
+    </thead><tbody>`;
+
+    // แถวเกม + running total (โผล่ตั้งแต่จบเกม 2 เป็นต้นไป)
+    const run=[0,0,0,0];
+    for(let g=0;g<n;g++){
+      s.rounds[g].forEach((v,i)=>run[i]+=v);
+      html+=`<tr><td class="gm">เกม ${g+1}</td>${s.rounds[g].map(v=>`<td class="${cls(v)}">${fmtCell(v,s.game)}</td>`).join("")}</tr>`;
+      if(g>=1){
+        html+=`<tr class="runrow"><td class="gm">รวม→${g+1}</td>${run.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
+      }
+    }
+
+    // แถวกรอกเกมถัดไป (แตะช่อง → keypad ลอย)
+    if(n<s.numGames){
+      const sum=pend.every(v=>v!==null)?pend.reduce((a,b)=>a+b,0):null;
+      html+=`<tr><td class="gm">เกม ${n+1}</td>${[0,1,2,3].map(i=>
+        `<td><div class="scorecell ${pend[i]!==null?"filled "+cls(pend[i]):""}" onclick="openPad(${i})">${pend[i]!==null?fmt(pend[i]):"แตะ"}</div></td>`).join("")}</tr>
+      <tr><td></td><td colspan="4">
+        ${s.game==="samkong"&&sum!==null?`<div class="hint" style="margin:0 0 6px;color:${sum===0?"#4ade80":"#f87171"}">ผลรวม = ${fmt(sum)}${sum===0?" ✓":" (ต้องเป็น 0)"}</div>`:""}
+        <button class="btn primary" style="width:100%" onclick="addRound()">✓ บันทึกเกม ${n+1}</button>
+      </td></tr>`;
+    }
+
+    // ท้ายตาราง: รวมรอบ (+ หลัก + ได้/เสีย เฉพาะจับหมู)
+    if(n>0){
+      html+=`<tr class="totrow"><td class="gm">รวมรอบ</td>${tot.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
+      if(s.game==="jabmoo"){
+        html+=`<tr class="hrow"><td class="gm">หลัก</td>${hs.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>
+        <tr class="sprow"><td class="gm">ได้/เสีย</td>${sp.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
+      }
+    }
+    html+=`</tbody></table>
+    <div class="row" style="margin-top:8px">
+      ${n>0?`<button class="btn small danger" onclick="undoRound()">↩︎ ลบเกมล่าสุด</button>`:""}
+    </div>
+    <div class="hint">K: กด = +1 (K, 2K, 3K…) · กดค้าง = ล้าง</div>
+    </div>`;
+  }
+
+  // ── สรุปทุกรอบ: ยอดจบต่อรอบ + รวมสะสม + K สะสม ──
+  const lj=summaryByGame("jabmoo"), ls=summaryByGame("samkong");
+  const kAcc=kByName();
+  if(lj.length||ls.length){
+    const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
+    html+=`<div class="card" style="--np:${names.length}"><div class="secTitle">📚 สรุปทุกรอบ</div>`;
+
+    if(lj.length){
+      const acc={};
+      html+=`<table class="acc" style="margin-bottom:12px"><thead>
+        <tr><th style="text-align:left">🐷 จับหมู (ได้/เสีย)</th>${names.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;
+      lj.forEach((r,i)=>{
+        html+=`<tr><td class="gm" style="text-align:left">รอบ ${i+1} · ${dstr(r.startedAt)}</td>${names.map(p=>{
+          const v=r.byName[p];
+          if(v===undefined)return `<td class="zer">—</td>`;
+          acc[p]=(acc[p]||0)+v;
+          return `<td class="${cls(v)}">${fmt(v)}</td>`;
+        }).join("")}</tr>`;
+      });
+      html+=`<tr class="totrow"><td class="gm" style="text-align:left">รวมสะสม</td>${names.map(p=>`<td>${acc[p]!==undefined?fmt(acc[p]):"—"}</td>`).join("")}</tr>
+      </tbody></table>`;
+    }
+
+    if(ls.length){
+      const acc={};
+      html+=`<table class="acc" style="margin-bottom:12px"><thead>
+        <tr><th style="text-align:left">🃏 สามกอง (คะแนน)</th>${names.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;
+      ls.forEach((r,i)=>{
+        html+=`<tr><td class="gm" style="text-align:left">รอบ ${i+1} · ${dstr(r.startedAt)}</td>${names.map(p=>{
+          const v=r.byName[p];
+          if(v===undefined)return `<td class="zer">—</td>`;
+          acc[p]=(acc[p]||0)+v;
+          return `<td class="${cls(v)}">${fmt(v)}</td>`;
+        }).join("")}</tr>`;
+      });
+      html+=`<tr class="totrow"><td class="gm" style="text-align:left">รวมสะสม</td>${names.map(p=>`<td>${acc[p]!==undefined?fmt(acc[p]):"—"}</td>`).join("")}</tr>
+      </tbody></table>`;
+    }
+
+    html+=`<table class="acc"><tbody>
+      <tr class="krow"><td class="gm" style="text-align:left">K สะสม</td>${names.map(p=>`<td>${kAcc[p]?kAcc[p]+"K":"—"}</td>`).join("")}</tr>
+    </tbody></table></div>`;
+  }
+
+  // ── GRAND TOTAL เมื่อจบ Session ──
+  if(db.night.ended&&(lj.length||ls.length)){
+    const f=computeFinal();
+    html+=`<div class="card" style="--np:${f.names.length}"><div class="secTitle">🏁 สรุปจบ Session</div>
+    <div class="row" style="margin-bottom:6px"><span style="font-size:12px;color:rgba(232,220,192,0.6)">ส่วนลดสามกอง:</span>${discChips("d1")}</div>
+    <div class="row" style="margin-bottom:10px"><span style="font-size:12px;color:rgba(232,220,192,0.6)">ส่วนลดสุดท้าย:</span>${discChips("d2")}</div>
+    ${finalRows(f)}
+    </div>`;
+  }
+
+  // ── ประวัติรายเกมของรอบก่อนๆ (ไม่รวมรอบที่เปิดอยู่) — ใหม่บน เก่าล่างสุด ──
+  const hist=db.sessions.filter(x=>x.rounds.length>0&&x.id!==db.activeId).sort((a,b)=>b.startedAt-a.startedAt);
+  if(hist.length){
+    html+=`<div class="card"><div class="secTitle">🗂 รอบที่ผ่านมา (รายเกม)</div>`;
+    hist.forEach(x=>{
+      const tot=[0,0,0,0];
+      x.rounds.forEach(r=>r.forEach((v,i)=>tot[i]+=v));
+      const hs=tot.map(toH), sp=calcSpread(hs);
+      html+=`<div class="secTitle" style="margin-top:10px;text-align:left">${x.game==="jabmoo"?"🐷 จับหมู":"🃏 สามกอง"} รอบ ${roundNo(x)} · ${dstr(x.startedAt)}</div>
+      <table class="histtab" style="margin-bottom:6px;--np2:${x.players.length}"><thead>
+        <tr><th></th>${x.players.map(p=>`<th>${p}</th>`).join("")}</tr>
+      </thead><tbody>`;
+      x.rounds.forEach((r,g)=>{
+        html+=`<tr><td class="gm">เกม ${g+1}</td>${r.map(v=>`<td class="${cls(v)}">${fmtCell(v,x.game)}</td>`).join("")}</tr>`;
+      });
+      html+=`<tr class="krow"><td class="gm">K</td>${x.k.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>`;
+      html+=`<tr class="totrow"><td class="gm">รวมรอบ</td>${tot.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
+      if(x.game==="jabmoo"){
+        html+=`<tr class="hrow"><td class="gm">หลัก</td>${hs.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>
+        <tr class="sprow"><td class="gm">ได้/เสีย</td>${sp.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>`;
+      }
+      html+=`</tbody></table>`;
+    });
+    html+=`</div>`;
+  }
+
+  app.innerHTML=html;
+}
+function toggleNight(){db.night.ended=!db.night.ended;save();render();}
+
+// ── DASHBOARD ภาพเดียวทั้ง session ──
+function dashHTML(){
+  const lj=summaryByGame("jabmoo"), ls=summaryByGame("samkong");
+  const kAcc=kByName();
+  const names=[...new Set([].concat(...lj.map(x=>Object.keys(x.byName)),...ls.map(x=>Object.keys(x.byName)),Object.keys(kAcc)))];
+  const d=new Date();const p=n=>String(n).padStart(2,"0");
+  const today=p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();
+  const fTop=computeFinal();
+  let h=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+    <div style="flex-shrink:0">${podiumHTML(fTop)}</div>
+    <div style="flex:1;min-width:0"><div class="dashHead">🐷 จับหมู..สร้างสรรค์</div><div class="dashDate" style="margin-bottom:0">Date ${today}</div></div>
+  </div>`;
+
+  // บน: สรุปรอบ (ได้/เสีย จับหมู + คะแนนสามกอง) — reuse โครง acc
+  const mkSum=(list,title)=>{
+    if(!list.length)return "";
+    const acc={};
+    let t=`<table class="acc" style="--np:${names.length};margin-bottom:8px"><thead><tr><th>${title}</th>${names.map(q=>`<th>${q}</th>`).join("")}</tr></thead><tbody>`;
+    list.forEach((r,i)=>{
+      t+=`<tr><td class="gm">รอบ ${i+1}</td>${names.map(q=>{
+        const v=r.byName[q];
+        if(v===undefined)return `<td class="zer">—</td>`;
+        acc[q]=(acc[q]||0)+v;
+        return `<td class="${cls(v)}">${fmt(v)}</td>`;
+      }).join("")}</tr>`;
+    });
+    t+=`<tr class="totrow"><td class="gm">รวม</td>${names.map(q=>`<td>${acc[q]!==undefined?fmt(acc[q]):"—"}</td>`).join("")}</tr></tbody></table>`;
+    return t;
+  };
+  h+=mkSum(lj,"🐷 ได้/เสีย")+mkSum(ls,"🃏 สามกอง");
+
+  // สรุป session (grand) — ลำดับแถวตามสเปก + ทศนิยม
+  const f=computeFinal();
+  h+=finalRows(f);
+
+  // ล่าง: ทุกรอบตัวเล็ก (ใหม่→เก่า)
+  const hist=db.sessions.filter(x=>x.rounds.length>0).sort((a,b)=>b.startedAt-a.startedAt);
+  if(hist.length){
+    h+=`<div class="dashGrid">`;
+    hist.forEach(x=>{
+      const tot=[0,0,0,0];x.rounds.forEach(r=>r.forEach((v,i)=>tot[i]+=v));
+      h+=`<div class="dashMini"><div class="secTitle">${x.game==="jabmoo"?"🐷":"🃏"} รอบ ${roundNo(x)} · ${dstr(x.startedAt)}</div>
+      <table style="width:100%"><thead><tr><th></th>${x.players.map(q=>`<th>${q}</th>`).join("")}</tr></thead><tbody>`;
+      x.rounds.forEach((r,g)=>{h+=`<tr><td class="gm">${g+1}</td>${r.map(v=>`<td class="${cls(v)}">${fmtCell(v,x.game)}</td>`).join("")}</tr>`;});
+      h+=`<tr class="totrow"><td class="gm">รวม</td>${tot.map(v=>`<td>${fmt(v)}</td>`).join("")}</tr>
+      <tr class="krow"><td class="gm">K</td>${x.k.map(v=>`<td>${v?v+"K":"—"}</td>`).join("")}</tr>
+      </tbody></table></div>`;
+    });
+    h+=`</div>`;
+  }
+  return h;
+}
+function openDash(){
+  const host=document.getElementById("padHost");
+  host.innerHTML=`<div id="dashOv">
+    <div class="dashBtns">
+      <button class="btn primary" onclick="snapDash()">📷 บันทึกเป็นรูป</button>
+      <button class="btn" onclick="document.getElementById('padHost').innerHTML=''">ปิด</button>
+    </div>
+    <div id="dashBody">${dashHTML()}</div>
+    <div class="hint" style="margin-top:8px">ถ้าบันทึกรูปไม่ได้ ให้แคปหน้าจอหน้านี้แทนได้เลย</div>
+  </div>`;
+}
+async function snapDash(){
+  try{
+    if(!window.html2canvas){
+      await new Promise((res,rej)=>{
+        const sc=document.createElement("script");
+        sc.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+        sc.onload=res;sc.onerror=rej;document.head.appendChild(sc);
+      });
+    }
+    const el=document.getElementById("dashBody");
+    const canvas=await html2canvas(el,{backgroundColor:"#0b1f12",scale:2,useCORS:true});
+    const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
+    const file=new File([blob],"jabmoo-session.png",{type:"image/png"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:"จับหมู session"});return;
+    }
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="jabmoo-session.png";
+    document.body.appendChild(a);a.click();a.remove();
+  }catch(e){
+    if(e&&e.name==="AbortError")return;
+    alert("บันทึกรูปอัตโนมัติไม่ได้บนเครื่องนี้ — แคปหน้าจอหน้านี้แทนได้เลย");
+  }
+}
+function setDisc(key,v){
+  if(v==="custom"){
+    const x=prompt("% ส่วนลด (0-100)",db.night[key]||0);
+    if(x===null)return;v=parseFloat(x);
+  }
+  v=+v;if(isNaN(v)||v<0)v=0;if(v>100)v=100;
+  db.night[key]=v;save();render();
+}
+function discChips(key){
+  return [0,10,25,50,100].map(p=>
+    `<button class="btn small ${db.night[key]===p?"primary":""}" onclick="setDisc('${key}',${p})">${p}%</button>`
+  ).join("")+`<button class="btn small ${[0,10,25,50,100].includes(db.night[key])?"":"primary"}" onclick="setDisc('${key}','custom')">อื่นๆ${[0,10,25,50,100].includes(db.night[key])?"":" ("+db.night[key]+"%)"}</button>`;
+}
+function showNew(){const b=document.getElementById("newBox");b.style.display=b.style.display==="none"?"block":"none";
+  document.querySelectorAll("#segGame button").forEach(x=>x.onclick=()=>{document.querySelectorAll("#segGame button").forEach(y=>y.classList.remove("on"));x.classList.add("on");});
+  document.querySelectorAll("#segN button").forEach(x=>x.onclick=()=>{document.querySelectorAll("#segN button").forEach(y=>y.classList.remove("on"));x.classList.add("on");});
+}
+function createFromBox(){
+  const g=document.querySelector("#segGame button.on").dataset.g;
+  const nn=+document.querySelector("#segN button.on").dataset.n;
+  pendClear();
+  newSession(g,nn);
+}
+render();
+</script>
+</body>
+</html>
