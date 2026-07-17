@@ -32,27 +32,6 @@ select{appearance:auto;}
 </head>
 <body>
 <div id="root"></div>
-<script>
-(function(){
-  var VER="v0717.1";
-  window.__JM_VER=VER;
-  function show(msg){
-    var d=document.getElementById("jm-err");
-    if(!d){
-      d=document.createElement("div");d.id="jm-err";
-      d.style.cssText="position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:99999;background:#7f1d1d;color:#fff;padding:10px 12px;border-radius:10px;font:12px/1.5 monospace;max-height:45vh;overflow:auto;box-shadow:0 4px 16px rgba(0,0,0,.5)";
-      var p=document.createElement("div");p.id="jm-err-msg";p.style.wordBreak="break-word";
-      var b=document.createElement("button");b.textContent="\u27F3 \u0E40\u0E23\u0E34\u0E48\u0E21\u0E43\u0E2B\u0E21\u0E48";
-      b.style.cssText="margin-top:8px;padding:8px 14px;border:none;border-radius:8px;background:#fff;color:#7f1d1d;font-weight:700";
-      b.onclick=function(){location.reload();};
-      d.appendChild(p);d.appendChild(b);document.body.appendChild(d);
-    }
-    document.getElementById("jm-err-msg").textContent="ERROR ("+VER+"): "+msg;
-  }
-  window.addEventListener("error",function(e){show((e.message||"?")+(e.lineno?" @line "+e.lineno:""));});
-  window.addEventListener("unhandledrejection",function(e){show("promise: "+((e.reason&&e.reason.message)||e.reason||"?"));});
-})();
-</script>
 <script type="text/babel">
 const {useState,useEffect,useRef} = React;
 
@@ -399,9 +378,6 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
   const pos=tc.length;
   const hasJD=hand.some(c=>c.suit==="♦"&&c.rank==="J");
   const hasOtherD=hand.some(c=>c.suit==="♦"&&c.rank!=="J");
-  // J♦ BOSS: every ♦ above J (Q/K/A) is accounted for — played or in OUR hand.
-  // When boss, no opponent can beat J♦ in-suit → playing/leading it banks +100.
-  const jdBoss=hasJD&&["Q","K","A"].every(r=>hand.some(c=>c.suit==="♦"&&c.rank===r)||played.some(c=>c.suit==="♦"&&c.rank===r));
 
   // Slam detection
   const heartsByPlayer=allWon.map(w=>w.filter(c=>c.suit==="♥").length);
@@ -444,13 +420,6 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       if(highNonHeart.length)return highNonHeart[0];
     }
 
-    // J♦ BOSS lead: nothing can beat J♦ → lead it and bank +100.
-    // Guard: skip if Q♠ could be dumped on us (Q♠ still out, not ours, opponent void in ♦).
-    if(jdBoss){
-      const dumpRisk=!qOut&&!qInHand&&countVoidOpponents(voids,myIdx,"♦")>0;
-      if(!dumpRisk)return hand.find(c=>c.suit==="♦"&&c.rank==="J");
-    }
-
     // Rule 3: Don't lead J♦ unless we have Q/K/A♦ ourselves OR all Q/K/A♦ played
     if(hasJD&&!jOut){
       const weHaveHighD=["Q","K","A"].some(r=>hand.some(c=>c.suit==="♦"&&c.rank===r));
@@ -476,8 +445,12 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       // Never lead K♣ or A♣ if 10♣ not out and not in our hand (risk catching the ×2)
       if(!tenCOut&&!tenCInHand&&c.suit==="♣"&&(c.rank==="K"||c.rank==="A"))return false;
       if(isSC(c)&&!(c.suit==="♦"&&c.rank==="J"))return false;
-      // Never lead J♦ unless it's boss (cannot be beaten)
-      if(c.suit==="♦"&&c.rank==="J"&&!jdBoss)return false;
+      // Rule 3: don't lead J♦ unless safe
+      if(hasJD&&!jOut&&c.suit==="♦"&&c.rank==="J"){
+        const weHaveHighD=["Q","K","A"].some(r=>hand.some(x=>x.suit==="♦"&&x.rank===r));
+        const allHighDPlayed=["Q","K","A"].every(r=>played.some(x=>x.suit==="♦"&&x.rank===r));
+        if(!weHaveHighD&&!allHighDPlayed)return false;
+      }
       // Avoid spades if holding Q♠
       if(qInHand&&c.suit==="♠")return false;
       return true;
@@ -543,18 +516,17 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
 
   // ── FOLLOWING ─────────────────────────────────────────────────
 
-  // J♦ in trick: capture it (+100) with the LOWEST diamond GUARANTEED to win —
-  // beats the trick and (unless last position) no unseen ♦ can outrank it.
+  // J♦ in trick: play A♦ to guarantee win (J♦ = +100)
   const jdInTrick=tc.some(t=>t.card.suit==="♦"&&t.card.rank==="J");
   if(jdInTrick&&ls==="♦"){
-    const dTrickRanks=tc.filter(t=>t.card.suit==="♦").map(t=>RO[t.card.rank]);
-    const hiD=Math.max(...dTrickRanks);
-    // unseen = not in hand, not in playLog, and not sitting in the current trick
-    const unseenD=unseenRanks("♦",hand,playLog).filter(r=>!tc.some(t=>t.card.suit==="♦"&&t.card.rank===r));
-    const winners=vld.filter(c=>c.suit==="♦"&&RO[c.rank]>hiD&&(pos===3||unseenD.every(r=>RO[r]<RO[c.rank])))
-      .sort((a,b)=>RO[a.rank]-RO[b.rank]);
-    if(winners.length)return winners[0];
-    // Can't guarantee the capture → duck lowest, keep high guards for later
+    const ad=vld.find(x=>x.suit==="♦"&&x.rank==="A");
+    if(ad)return ad;
+    if(pos===3){
+      const kd=vld.find(x=>x.suit==="♦"&&x.rank==="K");
+      if(kd)return kd;
+      const qd=vld.find(x=>x.suit==="♦"&&x.rank==="Q");
+      if(qd)return qd;
+    }
     const ds=vld.filter(c=>c.suit==="♦").sort((a,b)=>RO[a.rank]-RO[b.rank]);
     if(ds.length)return ds[0];
   }
@@ -568,49 +540,32 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     const jdWillLose=highestDInTrick>RO["J"];
     // Our non-J diamonds
     const myOtherD=vld.filter(c=>c.suit==="♦"&&c.rank!=="J");
-    const jd=hand.find(c=>c.suit==="♦"&&c.rank==="J");
-    // Penalty currently sitting in the trick (Q♠/hearts dumped off-suit)
-    const trickPen=tc.reduce((s,t)=>s+cSc(t.card),0)-(jdInTrick?100:0);
 
     if(jdWillLose){
-      // J♦ will definitely lose this trick → NEVER play J♦, duck lowest other diamond
+      // J♦ will definitely lose this trick → NEVER play J♦, play lowest other diamond
       if(myOtherD.length)return myOtherD.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
       // Forced: only J♦ left as diamond → must play it (unavoidable loss)
-      return jd;
+      return hand.find(c=>c.suit==="♦"&&c.rank==="J");
     }
 
-    // Last position: J♦ wins — cash it unless the trick's penalty eats the +100
+    // No diamond higher than J in trick yet
+    if(pos<3){
+      // Not last: play highest non-J diamond to try win & protect J♦
+      if(myOtherD.length)return myOtherD.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
+      // Only J♦ left: risky to play now (mids 1-3 could have higher) → but forced
+      return hand.find(c=>c.suit==="♦"&&c.rank==="J");
+    }
+
+    // Last position (pos===3): check if J♦ can actually win
+    // J♦ wins only if it's higher than everything in the trick
     if(pos===3){
-      if(100+trickPen>0)return jd;
-      if(myOtherD.length)return myOtherD.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
-      return jd;
-    }
-
-    // pos 1-2: cash J♦ if it's GUARANTEED to win this trick:
-    //  (a) boss (no unseen ♦ above J), or
-    //  (b) every player still to act is void in ♦ (can't beat in-suit)
-    // Guard against Q♠ being dumped onto our winning trick.
-    {
-      const inTrickIdx=tc.map(t=>t.playerIdx);
-      const behind=[0,1,2,3].filter(p=>p!==myIdx&&!inTrickIdx.includes(p));
-      const behindAllVoid=behind.every(p=>isVoid(voids,p,"♦"));
-      if(jdBoss||behindAllVoid){
-        const dumpRisk=!qOut&&!qInHand&&countVoidOpponents(voids,myIdx,"♦")>0;
-        if(100+trickPen>0&&!dumpRisk)return jd;
+      if(!jdWillLose){
+        // J♦ is highest → safe to play and win +100
+        return hand.find(c=>c.suit==="♦"&&c.rank==="J");
       }
+      // shouldn't reach here (jdWillLose handled above) but fallback
+      if(myOtherD.length)return myOtherD.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
     }
-
-    // Not boss yet:
-    // - Holding a Q/K/A♦ protector → DUCK LOW: keep J♦ AND the protector;
-    //   let opponents burn their high diamonds, J♦ becomes boss later.
-    // - No protector → play highest non-J to fight for the trick (old behavior).
-    const haveProtector=hand.some(c=>c.suit==="♦"&&["Q","K","A"].includes(c.rank));
-    if(myOtherD.length){
-      return haveProtector
-        ?myOtherD.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b)
-        :myOtherD.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
-    }
-    return jd;
   }
 
   // J♦ HUNT: we are mid-position (pos 1-2), following ♦, hold Q/K/A♦ but NOT J♦.
@@ -1240,7 +1195,6 @@ function Setup({onStart,onOnline,lang,setLang}){
         <button onClick={onOnline} style={{width:"100%",marginTop:10,padding:13,background:"#fff",border:"2px solid #3b82f6",borderRadius:10,fontSize:15,fontWeight:700,color:"#2563eb",cursor:"pointer"}}>
           🌐 {L?"เล่นกับเพื่อน (ออนไลน์)":"Play with friends (online)"}
         </button>
-        <div style={{textAlign:"center",fontSize:10,color:"#9ca3af",marginTop:8}}>{window.__JM_VER||""}</div>
       </div>
     </div>
   );
@@ -1250,10 +1204,10 @@ function Setup({onStart,onOnline,lang,setLang}){
 function GameOver({players,totals,lang,history,onAgain}){
   const confetti=React.useMemo(()=>Array(26).fill(0).map((_,i)=>({l:Math.random()*100,d:2.2+Math.random()*2.5,dl:Math.random()*1.6,e:["🎉","✨","🐷","🃏","💰"][i%5]})),[]);
   const L=lang==="th";
-  const [showHist,setShowHist]=useState(false);
+  const [showHist,setShowHist]=useState(true);
   const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i])}))].sort((a,b)=>b.score-a.score);
   return (
-    <div style={{minHeight:"100vh",height:"100dvh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"calc(1rem + env(safe-area-inset-top)) 1rem calc(1rem + env(safe-area-inset-bottom))",overflowY:"auto"}}>
+    <div style={{minHeight:"100vh",background:"#f0f1f3",display:"flex",alignItems:"center",justifyContent:"center",padding:"calc(1rem + env(safe-area-inset-top)) 1rem 1rem",overflowY:"auto"}}>
       {confetti.map((c,i)=><span key={i} className="confetti" style={{left:c.l+"%",animationDuration:c.d+"s",animationDelay:c.dl+"s"}}>{c.e}</span>)}
       <div style={{width:"100%",maxWidth:420,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.1)",textAlign:"center",marginTop:"0.5rem",marginBottom:"0.5rem"}}>
         <div style={{fontSize:38,marginBottom:8}}>🏆</div>
@@ -1380,7 +1334,6 @@ function gReduce(S,A){
     return{...S,hands:nh,trick:nt,curIdx:(ci+1)%4,selected:null,playLog:newLog,voids:newVoids};
   }
   if(A.type==="CLEAR"){
-    if(S.phase!=="trickDone"||!S.trick.length)return S; // stale/duplicate CLEAR — ignore
     const wi=trickWin(S.trick,S.trick[0].card.suit);
     if(S.trickNum>=13){
       // Recompute wonTricks from wonCards to avoid any stale state issues
@@ -1703,7 +1656,29 @@ function Game({cfg,lang,setLang,net,onExit}){
     if(isClient&&net.bindState)net.bindState(applyFrame);
   },[]);
 
+  const Sreal=sRef.current;
+  if(!Sreal||!Sreal.hands)return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#1e3a5f"}}>{isClient?(lang==="th"?"รอโฮสต์เริ่ม…":"Waiting for host…"):"Loading…"}</div>;
+  const S=mySeat===0?Sreal:permuteState(Sreal,mySeat);
+  const pl=mySeat===0?cfg.players:[0,1,2,3].map(p=>cfg.players[(mySeat+p)%4]);
+  if(S.gameOver){
+    if(S.lastRoundScores&&lastRecordedGame.current!==S.gameNum){
+      lastRecordedGame.current=S.gameNum;
+      histRef.current=[...histRef.current,{game:S.gameNum,scores:S.lastRoundScores}];
+      playApplause();
+    }
+    const hd=[...histRef.current];
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+  }
+
   const L=lang==="th";
+  const ls=S.trick.length?S.trick[0].card.suit:null;
+  // cgS = current game score
+  // -50 if no score cards won (even if won tricks with no point cards)
+  const wt=S.wonTricks||[0,0,0,0];
+  const cgS=S.wonCards.map((w,i)=>{
+    if(w.length===0) return -50;  // no score cards won → -50
+    return calcScore(w,wt[i]);
+  });
   // ── LANDSCAPE LAYOUT CONSTANTS ──────────────────────────────
   const vw=(typeof window!=="undefined"?window.innerWidth:667);
   const vh=(typeof window!=="undefined"?window.innerHeight:375);
@@ -1819,28 +1794,6 @@ function Game({cfg,lang,setLang,net,onExit}){
   const [orient,setOrient]=useState("portrait");
 
   // ── SCORE PANEL (left column) ────────────────────────────────
-  const Sreal=sRef.current;
-  if(!Sreal||!Sreal.hands)return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#1e3a5f"}}>{isClient?(lang==="th"?"รอโฮสต์เริ่ม…":"Waiting for host…"):"Loading…"}</div>;
-  const S=mySeat===0?Sreal:permuteState(Sreal,mySeat);
-  const pl=mySeat===0?cfg.players:[0,1,2,3].map(p=>cfg.players[(mySeat+p)%4]);
-  if(S.gameOver){
-    if(S.lastRoundScores&&lastRecordedGame.current!==S.gameNum){
-      lastRecordedGame.current=S.gameNum;
-      histRef.current=[...histRef.current,{game:S.gameNum,scores:S.lastRoundScores}];
-      playApplause();
-    }
-    const hd=[...histRef.current];
-    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
-  }
-
-  const ls=S.trick.length?S.trick[0].card.suit:null;
-  // cgS = current game score
-  // -50 if no score cards won (even if won tricks with no point cards)
-  const wt=S.wonTricks||[0,0,0,0];
-  const cgS=S.wonCards.map((w,i)=>{
-    if(w.length===0) return -50;  // no score cards won → -50
-    return calcScore(w,wt[i]);
-  });
   function ScoreCol(){
     return (
       <div style={{display:"flex",flexDirection:"column",gap:2,padding:"2px 0"}}>
@@ -1919,9 +1872,9 @@ function Game({cfg,lang,setLang,net,onExit}){
   function EmoteFab(){
     return (
       <React.Fragment>
-        <button onClick={()=>setEmoteOpen(o=>!o)} style={{position:"fixed",left:8,bottom:"calc(88px + env(safe-area-inset-bottom))",zIndex:270,width:36,height:36,borderRadius:18,border:"1.5px solid rgba(212,175,55,0.5)",background:"rgba(37,99,235,0.92)",color:"#fff",fontSize:18,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.4)"}}>😊</button>
+        <button onClick={()=>setEmoteOpen(o=>!o)} style={{position:"fixed",right:6,top:"39%",zIndex:270,width:38,height:38,borderRadius:19,border:"none",background:"rgba(37,99,235,0.92)",color:"#fff",fontSize:19,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.35)"}}>😊</button>
         {emoteOpen&&(
-          <div style={{position:"fixed",left:8,bottom:"calc(130px + env(safe-area-inset-bottom))",zIndex:271,background:"#fff",borderRadius:12,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
+          <div style={{position:"fixed",right:50,top:"30%",zIndex:271,background:"#fff",borderRadius:12,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.28)",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
             {EMOTES.map(em=><button key={em} onClick={()=>sendEmote(em)} style={{fontSize:24,border:"none",background:"transparent",cursor:"pointer",padding:5,borderRadius:8}}>{em}</button>)}
           </div>
         )}
