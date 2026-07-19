@@ -43,7 +43,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0719.4";
+  var VER="v0719.3";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1247,41 +1247,6 @@ function Toast({msg,cards}){
 // ── SETUP ──────────────────────────────────────────────────────
 const SS={fontSize:13,padding:"5px 8px",borderRadius:7,border:"1px solid #d1d5db",background:"#fff",color:"#374151",cursor:"pointer",outline:"none"};
 
-// ── XP / LEVEL SYSTEM (per-device profile, always-positive accumulation) ──
-const XP_KEY="jm-xp-v1";
-const XP_LEVELS=[
-  [1,"🐷 หมูน้อย",0],[2,"หมูหัดวิ่ง",150],[3,"หมูรู้ทาง",400],[4,"นักล่าหมู",800],
-  [5,"มือปราบ Q♠",1400],[6,"เขี้ยวลากดิน",2200],[7,"เจ้าพ่อ J♦",3200],[8,"มือวาง 10♣",4600],
-  [9,"ขาใหญ่โต๊ะเขียว",6200],[10,"เซียนโต๊ะทอง",8000],[11,"เซียนเหนือเซียน",10500],
-  [12,"จอมยุทธ์ไพ่",13500],[13,"ปรมาจารย์",17000],[14,"เหนือเมฆ",21000],[15,"👑 เทพจับหมู",25000]];
-function xpLoad(){try{const o=JSON.parse(localStorage.getItem(XP_KEY));if(o&&typeof o.xp==="number")return o;}catch(e){}return {name:"",xp:0,games:0};}
-function xpSave(o){try{localStorage.setItem(XP_KEY,JSON.stringify(o));}catch(e){}}
-function xpLevelInfo(xp){
-  let cur=XP_LEVELS[0],next=null;
-  for(const L of XP_LEVELS){if(xp>=L[2])cur=L;else{next=L;break;}}
-  if(!next){ // beyond Lv15: +5000 per level
-    const extra=Math.floor((xp-25000)/5000);
-    cur=[15+extra,"👑 เทพจับหมู"+(extra>0?" +"+extra:""),25000+extra*5000];
-    next=[16+extra,"👑 เทพจับหมู +"+(extra+1),25000+(extra+1)*5000];
-  }
-  return {lv:cur[0],name:cur[1],base:cur[2],next:next[2],pct:Math.min(100,Math.round(100*(xp-cur[2])/(next[2]-cur[2])))};
-}
-// Compute XP events for one finished game (myScore from roundScores, myWon = my score-card pile)
-function xpForGame(myScore,allScores,myWon,allWon,matchDone,matchGames){
-  const ev=[["เล่นจบเกม",20]];
-  const rank=allScores.filter(s=>s>myScore).length+1;
-  ev.push(["จบอันดับ "+rank,[40,25,12,5][rank-1]]);
-  if(myWon.some(c=>c.suit==="♦"&&c.rank==="J"))ev.push(["เก็บ J♦ ได้",15]);
-  if(myScore>=0)ev.push(["คะแนนไม่ติดลบ",10]);
-  const qsMine=myWon.some(c=>c.suit==="♠"&&c.rank==="Q");
-  const qsOut=allWon.some(w=>w.some(c=>c.suit==="♠"&&c.rank==="Q"));
-  if(qsOut&&!qsMine)ev.push(["หนีหมูสำเร็จ",5]);
-  if(myWon.filter(c=>c.suit==="♥").length>=13)ev.push(["SLAM!",60]);
-  if(myScore===788)ev.push(["สุดยอด +788",150]);
-  if(matchDone)ev.push(["เล่นครบ "+matchGames+" เกม",30]);
-  return {ev,total:ev.reduce((s,e)=>s+e[1],0)};
-}
-
 function Setup({onStart,onOnline,lang,setLang}){
   const [nm,setNm]=useState(["","","",""]);
   const [isBot,setIsBot]=useState([false,true,true,true]);
@@ -1290,13 +1255,10 @@ function Setup({onStart,onOnline,lang,setLang}){
   const [th,setTh]=useState(500);
   const [numGames,setNumGames]=useState(8);
   const [showSec,setShowSec]=useState(3);
-  const [prof,setProf]=useState(xpLoad());
-  const lvInfo=xpLevelInfo(prof.xp);
-  function setProfName(n){const p={...prof,name:n};setProf(p);xpSave(p);}
   const L=lang==="th";
   function start(){
     onStart({
-      players:nm.map((n,i)=>({name:n||(i===0?(prof.name||(L?"คุณ":"You")):(isBot[i]?"Bot "+(i+1):"P"+(i+1))),isBot:i===0?false:isBot[i],botLevel:lv[i]})),
+      players:nm.map((n,i)=>({name:n||(isBot[i]?"Bot "+(i+1):"P"+(i+1)),isBot:i===0?false:isBot[i],botLevel:lv[i]})),
       endMode:em,threshold:th,numGames,showSec
     });
   }
@@ -1309,23 +1271,6 @@ function Setup({onStart,onOnline,lang,setLang}){
             {["th","en"].map(l=>(
               <button key={l} onClick={()=>setLang(l)} style={{padding:"3px 11px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,background:lang===l?"#3b82f6":"transparent",color:lang===l?"#fff":"#6b7280"}}>{l.toUpperCase()}</button>
             ))}
-          </div>
-        </div>
-
-        {/* ── PROFILE / LEVEL CARD ── */}
-        <div style={{background:"linear-gradient(135deg,#0b3d2e,#14532d)",borderRadius:12,padding:"0.7rem 0.8rem",marginBottom:"0.8rem",border:"1.5px solid rgba(212,175,55,0.55)",color:"#fff"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-            <div style={{fontSize:12,fontWeight:800,background:"rgba(212,175,55,0.95)",color:"#1a2e1a",borderRadius:7,padding:"2px 8px",whiteSpace:"nowrap"}}>Lv.{lvInfo.lv}</div>
-            <div style={{fontSize:13,fontWeight:700,color:"#fde68a",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lvInfo.name}</div>
-            <input value={prof.name} onChange={e=>setProfName(e.target.value)} placeholder={L?"ชื่อของคุณ":"Your name"}
-              style={{width:96,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.4)",borderRadius:6,padding:"3px 7px",color:"#fff",fontSize:12,outline:"none"}}/>
-          </div>
-          <div style={{background:"rgba(0,0,0,0.35)",borderRadius:6,height:10,overflow:"hidden"}}>
-            <div style={{width:lvInfo.pct+"%",height:"100%",background:"linear-gradient(90deg,#d4af37,#fde68a)",borderRadius:6,transition:"width 0.6s"}}/>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#d1fae5",marginTop:3}}>
-            <span>⭐ {prof.xp.toLocaleString()} {L?"แต้ม":"pts"}</span>
-            <span>{L?"อีก":"next"} {(lvInfo.next-prof.xp).toLocaleString()} → Lv.{lvInfo.lv+1}</span>
           </div>
         </div>
 
@@ -1611,59 +1556,6 @@ function Game({cfg,lang,setLang,net,onExit}){
   const rd=()=>fr(x=>x+1);
   const tmr=useRef(null);
   const bk=useRef("");
-  const [xpToast,setXpToast]=useState(null);
-  const xpAwarded=useRef({});
-  const wasOver=useRef(false);
-
-  // ── XP AWARD: fires once per finished game (roundSummary or final gameOver) ──
-  useEffect(()=>{
-    const Sr=sRef.current;if(!Sr)return;
-    // new match started after a finished one → reset award keys
-    if(wasOver.current&&!Sr.gameOver){wasOver.current=false;xpAwarded.current={};setXpToast(null);}
-    if(Sr.gameOver)wasOver.current=true;
-    const isSummary=Sr.phase==="roundSummary"&&Sr.roundScores;
-    const isOver=Sr.gameOver&&Sr.lastRoundScores;
-    if(!isSummary&&!isOver)return;
-    const me=mySeat;
-    if(!cfg.players[me]||cfg.players[me].isBot)return; // only human on this device earns XP
-    const key=(Sr.gameNum||0)+(isOver?"F":"S");
-    if(xpAwarded.current[key])return;
-    xpAwarded.current[key]=1;
-    const rs=isSummary?Sr.roundScores:Sr.lastRoundScores;
-    const res=xpForGame(rs[me],rs,Sr.wonCards[me]||[],Sr.wonCards||[],!!isOver,cfg.numGames||8);
-    const p=xpLoad();
-    const before=xpLevelInfo(p.xp);
-    p.xp+=res.total;p.games=(p.games||0)+1;
-    if(!p.name&&cfg.players[me]&&!cfg.players[me].isBot)p.name=cfg.players[me].name||"";
-    xpSave(p);
-    const after=xpLevelInfo(p.xp);
-    setXpToast({ev:res.ev,total:res.total,xp:p.xp,info:after,lvUp:after.lv>before.lv});
-  });
-
-  // ── XP PANEL (shown during round summary / game over) ──
-  function XpPanel(){
-    const Sr=sRef.current;
-    if(!xpToast)return null;
-    if(!(Sr&&(Sr.phase==="roundSummary"||Sr.gameOver)))return null;
-    return (
-      <div onClick={()=>setXpToast(null)} style={{position:"fixed",left:"50%",transform:"translateX(-50%)",bottom:"calc(120px + env(safe-area-inset-bottom))",zIndex:320,width:230,background:"linear-gradient(135deg,#0b3d2e,#14532d)",border:"1.5px solid rgba(212,175,55,0.7)",borderRadius:12,padding:"8px 12px",color:"#fff",boxShadow:"0 6px 20px rgba(0,0,0,0.5)",cursor:"pointer"}}>
-        {xpToast.lvUp&&<div style={{textAlign:"center",fontSize:13,fontWeight:900,color:"#fde68a",marginBottom:4}}>🎉 เลเวลอัป! Lv.{xpToast.info.lv} {xpToast.info.name}</div>}
-        <div style={{textAlign:"center",fontSize:16,fontWeight:900,color:"#fbbf24",marginBottom:4}}>⭐ +{xpToast.total} แต้ม</div>
-        {xpToast.ev.map((e,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#d1fae5",lineHeight:1.5}}>
-            <span>{e[0]}</span><span style={{color:"#fde68a",fontWeight:700}}>+{e[1]}</span>
-          </div>
-        ))}
-        <div style={{background:"rgba(0,0,0,0.35)",borderRadius:5,height:7,overflow:"hidden",marginTop:5}}>
-          <div style={{width:xpToast.info.pct+"%",height:"100%",background:"linear-gradient(90deg,#d4af37,#fde68a)"}}/>
-        </div>
-        <div style={{display:"flex",justifyContent:"space-between",fontSize:9.5,color:"#a7f3d0",marginTop:2}}>
-          <span>Lv.{xpToast.info.lv} {xpToast.info.name}</span><span>{xpToast.xp.toLocaleString()} แต้ม</span>
-        </div>
-      </div>
-    );
-  }
-
   function ap(a){sRef.current=gReduce(sRef.current,a);rd();}
 
   useEffect(()=>{
@@ -2020,7 +1912,7 @@ function Game({cfg,lang,setLang,net,onExit}){
       playApplause();
     }
     const hd=[...histRef.current];
-    return <React.Fragment><GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;xpAwarded.current={};setXpToast(null);ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/><XpPanel/></React.Fragment>;
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
   }
 
   const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2093,7 +1985,6 @@ function Game({cfg,lang,setLang,net,onExit}){
     const myDisp=net?mySeat:0;
     return (
       <React.Fragment>
-        <XpPanel/>
         <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:250}}>
           {emotes.map(e=>{
             const p=((e.seat-mySeat)%4+4)%4;
