@@ -34,7 +34,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0718.2";
+  var VER="v0719.1";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -876,8 +876,18 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     const inTrick=tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank]);
     const hi=inTrick.length?Math.max(...inTrick):0;
     const under=vld.filter(c=>c.suit===ls&&RO[c.rank]<hi);
+    // ♦ while J♦ still live: high diamonds are J-hunting ASSETS, never duck-high them.
+    // Play lowest diamond (ducks if possible; wins with the cheapest if forced).
+    if(ls==="♦"&&!jOut){
+      const ds=vld.filter(c=>c.suit==="♦");
+      if(ds.length)return ds.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+    }
     if(under.length)return under.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
-    if(pos===3)return vld.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
+    if(pos===3){
+      // we win anyway → shed highest, but NEVER win with our own Q♠ (self-pig)
+      const noPig=vld.filter(c=>!(c.suit==="♠"&&c.rank==="Q"));
+      return (noPig.length?noPig:vld).reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
+    }
     return vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
   }
 
@@ -956,10 +966,23 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     const inTrick=tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank]);
     const hi=inTrick.length?Math.max(...inTrick):0;
     const under=vld.filter(c=>c.suit===ls&&RO[c.rank]<hi);
+    // ♦ while J♦ still live: keep Q/K/A♦ as J-hunting assets — play lowest diamond
+    if(ls==="♦"&&!jOut){
+      const ds=vld.filter(c=>c.suit==="♦");
+      if(ds.length)return ds.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+    }
     if(under.length)return under.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
-    if(pos===3)return vld.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
+    if(pos===3){
+      // we win anyway → shed highest, but NEVER win with our own Q♠ (self-pig)
+      const noPig=vld.filter(c=>!(c.suit==="♠"&&c.rank==="Q"));
+      return (noPig.length?noPig:vld).reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
+    }
   }
-  return vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+  {
+    // final fallback: lowest — but avoid Q♠ if any alternative exists
+    const noPig=vld.filter(c=>!(c.suit==="♠"&&c.rank==="Q"));
+    return (noPig.length?noPig:vld).reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+  }
 }
 
 // ── CLAUDE API BOT (Level 3) ───────────────────────────────────
