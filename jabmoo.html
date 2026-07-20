@@ -43,7 +43,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0719.3";
+  var VER="v0720.1";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1104,7 +1104,7 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
         if(trick.length===4){
           const ls0=trick[0].card.suit;
           const w=trickWin(trick,ls0);
-          for(const t of trick)wc[w].push(t.card);
+          for(const t of trick)if(isSC(t.card))wc[w].push(t.card); // real engine stores SCORE cards only
           wt[w]++;cur=w;trick=[];
           if(hs.every(h=>h.length===0))break;
           continue;
@@ -1129,6 +1129,17 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
   for(let i=0;i<vld.length;i++){
     const v=ns[i]?sums[i]/ns[i]:-1e9;
     if(v>bv){bv=v;best=i;}
+  }
+  // Tie-break: when the top choices are within noise margin, defer to the heuristic bot.
+  // MC can't tell "equally lost" positions apart (e.g. a doomed J♦) and picks randomly,
+  // which looks dumb to humans — the heuristic keeps sensible card order in those spots.
+  const hCard=botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids);
+  if(hCard){
+    const hIdx=vld.findIndex(c=>c.key===hCard.key);
+    if(hIdx>=0&&hIdx!==best&&ns[hIdx]){
+      const hv=sums[hIdx]/ns[hIdx];
+      if(bv-hv<=10)return vld[hIdx];
+    }
   }
   return vld[best];
 }
