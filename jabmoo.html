@@ -43,7 +43,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0720.1";
+  var VER="v0720.2";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1178,36 +1178,67 @@ function PigSVG({w,h}){
   );
 }
 
+// Standard pip positions per rank: [x, y, flipBottom] in card fractions
+const PIP_LAYOUT={
+  "2":[[.5,.18],[.5,.82,1]],
+  "3":[[.5,.18],[.5,.5],[.5,.82,1]],
+  "4":[[.3,.18],[.7,.18],[.3,.82,1],[.7,.82,1]],
+  "5":[[.3,.18],[.7,.18],[.5,.5],[.3,.82,1],[.7,.82,1]],
+  "6":[[.3,.18],[.7,.18],[.3,.5],[.7,.5],[.3,.82,1],[.7,.82,1]],
+  "7":[[.3,.18],[.7,.18],[.5,.34],[.3,.5],[.7,.5],[.3,.82,1],[.7,.82,1]],
+  "8":[[.3,.18],[.7,.18],[.5,.34],[.3,.5],[.7,.5],[.5,.66,1],[.3,.82,1],[.7,.82,1]],
+  "9":[[.3,.16],[.7,.16],[.3,.39],[.7,.39],[.5,.5],[.3,.61,1],[.7,.61,1],[.3,.84,1],[.7,.84,1]],
+  "10":[[.3,.16],[.7,.16],[.5,.275],[.3,.39],[.7,.39],[.3,.61,1],[.7,.61,1],[.5,.725,1],[.3,.84,1],[.7,.84,1]]
+};
+
 function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
   w=w||52; h=h||74; lead=lead||false;
   const qS=card.suit==="♠"&&card.rank==="Q";
   const isJD=card.suit==="♦"&&card.rank==="J";
   const isTC=card.suit==="♣"&&card.rank==="10";
-  const rankFs=Math.round(h*0.24);
-  const suitFs=Math.round(h*0.38);
-  const cIdx=Math.round(h*0.20); // corner index (≈80% of center rank)
+  const col=SC(card.suit);
+  const cIdx=Math.max(8,Math.round(h*0.17));
+  const cIdxR=card.rank==="10"?Math.round(cIdx*0.82):cIdx;
   const border=sel?"3px solid #3b82f6":lead?"3px double #d4a017":"1.5px solid #d1d5db";
   const shadow=sel?"0 5px 16px rgba(59,130,246,0.4)":lead?"0 0 8px rgba(212,160,23,0.5)":"0 2px 5px rgba(0,0,0,0.15)";
+  const pips=PIP_LAYOUT[card.rank];
+  const isFace=card.rank==="J"||card.rank==="Q"||card.rank==="K";
+  const cornerBox=(flip)=>(
+    <div style={{position:"absolute",...(flip?{bottom:1,right:3,transform:"rotate(180deg)"}:{top:1,left:3}),display:"flex",flexDirection:"column",alignItems:"center",lineHeight:1,zIndex:6,background:(qS||isJD)?"rgba(255,255,255,0.9)":"transparent",borderRadius:3,padding:(qS||isJD)?"1px 2px":0}}>
+      <span style={{fontSize:cIdxR,fontWeight:800,color:col}}>{card.rank}</span>
+      <span style={{fontSize:Math.round(cIdx*0.9),color:col,marginTop:-1}}>{card.suit}</span>
+    </div>
+  );
   return (
     <div onClick={dis?undefined:onClick} style={{
       position:"relative",width:w,height:h,background:"#fff",borderRadius:7,border:border,
       cursor:dis?"default":"pointer",transform:sel?"translateY(-14px)":"none",transition:"transform 0.15s",
-      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
       flexShrink:0,boxShadow:shadow,zIndex:sel?10:1,opacity:dis?0.92:1,overflow:"hidden"
     }}>
       {qS
         ? <img src={IMG_QS} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="Q♠"/>
         : isJD
           ? <img src={IMG_JD} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="J♦"/>
-          : !corner && (<>
-              <div style={{fontSize:rankFs,fontWeight:800,color:SC(card.suit),lineHeight:1}}>{card.rank}</div>
-              <div style={{fontSize:trick?Math.round(h*0.50):suitFs,color:SC(card.suit),lineHeight:1}}>{card.suit}</div>
-            </>)
+          : (<React.Fragment>
+              {card.rank==="A"&&(
+                <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",fontSize:Math.round(h*0.42),color:col,lineHeight:1}}>{card.suit}</div>
+              )}
+              {isFace&&(
+                <React.Fragment>
+                  <div style={{position:"absolute",left:"17%",right:"17%",top:"14%",bottom:"14%",border:"1px solid "+col+"55",borderRadius:3}}/>
+                  <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",textAlign:"center",lineHeight:1}}>
+                    <div style={{fontSize:Math.round(h*0.28),fontWeight:800,color:col}}>{card.rank}</div>
+                    <div style={{fontSize:Math.round(h*0.20),color:col,marginTop:1}}>{card.suit}</div>
+                  </div>
+                </React.Fragment>
+              )}
+              {pips&&pips.map((p,i)=>(
+                <span key={i} style={{position:"absolute",left:(12+p[0]*76)+"%",top:(7+p[1]*86)+"%",transform:"translate(-50%,-50%)"+(p[2]?" rotate(180deg)":""),fontSize:Math.max(7,Math.round(h*0.15)),color:col,lineHeight:1}}>{card.suit}</span>
+              ))}
+            </React.Fragment>)
       }
-      {corner && <div style={{position:"absolute",top:2,left:3,display:"flex",flexDirection:"column",alignItems:"center",lineHeight:0.9,zIndex:6,background:(qS||isJD)?"rgba(255,255,255,0.9)":"transparent",borderRadius:3,padding:(qS||isJD)?"1px 2px":0}}>
-        <span style={{fontSize:cIdx,fontWeight:800,color:SC(card.suit)}}>{card.rank}</span>
-        <span style={{fontSize:cIdx,color:SC(card.suit)}}>{card.suit}</span>
-      </div>}
+      {cornerBox(false)}
+      {!(qS||isJD)&&cornerBox(true)}
       {isTC && <div style={{position:"absolute",top:-8,right:-5,background:"#fbbf24",color:"#78350f",fontSize:9,fontWeight:800,borderRadius:4,padding:"1px 4px",zIndex:11}}>×2</div>}
     </div>
   );
