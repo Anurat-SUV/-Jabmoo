@@ -43,7 +43,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0721.2";
+  var VER="v0721.3";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1362,7 +1362,9 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
   const [numGames,setNumGames]=useState(8);
   const [showSec,setShowSec]=useState(3);
   const L=lang==="th";
+  const hasName=!!(prof&&prof.name&&prof.name.trim());
   function start(){
+    if(!hasName){onShowCode();return;}
     onStart({
       players:nm.map((n,i)=>({name:i===0?((prof&&prof.name)||n||(L?"คุณ":"You")):(n||(isBot[i]?"Bot "+(i+1):"P"+(i+1))),isBot:i===0?false:isBot[i],botLevel:lv[i]})),
       endMode:em,threshold:th,numGames,showSec
@@ -1460,10 +1462,10 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
           </select>
         </div>
 
-        <button onClick={start} style={{width:"100%",padding:15,background:"linear-gradient(135deg,#1e3a5f,#2563eb)",border:"none",borderRadius:10,fontSize:17,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"Georgia,serif"}}>
-          {L?"เริ่มเกม!":"Start Game!"}
+        <button onClick={start} style={{width:"100%",padding:15,background:hasName?"linear-gradient(135deg,#1e3a5f,#2563eb)":"#9ca3af",border:"none",borderRadius:10,fontSize:17,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"Georgia,serif"}}>
+          {hasName?(L?"เริ่มเกม!":"Start Game!"):(L?"👤 ใส่ชื่อก่อนเริ่มเล่น":"👤 Set your name first")}
         </button>
-        <button onClick={onOnline} style={{width:"100%",marginTop:10,padding:13,background:"#fff",border:"2px solid #3b82f6",borderRadius:10,fontSize:15,fontWeight:700,color:"#2563eb",cursor:"pointer"}}>
+        <button onClick={()=>{if(!hasName){onShowCode();return;}onOnline();}} style={{width:"100%",marginTop:10,padding:13,background:"#fff",border:"2px solid #3b82f6",borderRadius:10,fontSize:15,fontWeight:700,color:"#2563eb",cursor:"pointer"}}>
           🌐 {L?"เล่นกับเพื่อน (ออนไลน์)":"Play with friends (online)"}
         </button>
         <div style={{textAlign:"center",fontSize:10,color:"#9ca3af",marginTop:8}}>{window.__JM_VER||""}</div>
@@ -1473,7 +1475,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
 }
 
 // ── GAME OVER ──────────────────────────────────────────────────
-function GameOver({players,totals,lang,history,onAgain}){
+function GameOver({players,totals,lang,history,onAgain,onHome}){
   const confetti=React.useMemo(()=>Array(26).fill(0).map((_,i)=>({l:Math.random()*100,d:2.2+Math.random()*2.5,dl:Math.random()*1.6,e:["🎉","✨","🐷","🃏","💰"][i%5]})),[]);
   const L=lang==="th";
   const [showHist,setShowHist]=useState(false);
@@ -1563,6 +1565,11 @@ function GameOver({players,totals,lang,history,onAgain}){
         <button onClick={onAgain} style={{marginTop:"1rem",width:"100%",padding:13,background:"#3b82f6",border:"none",borderRadius:10,fontSize:15,fontWeight:700,color:"#fff",cursor:"pointer"}}>
           {L?"เล่นอีกรอบ":"Play Again"}
         </button>
+        {onHome&&(
+          <button onClick={onHome} style={{marginTop:"0.6rem",width:"100%",padding:12,background:"#fff",border:"1.5px solid #3b82f6",borderRadius:10,fontSize:14,fontWeight:700,color:"#3b82f6",cursor:"pointer"}}>
+            {L?"🏠 กลับหน้าแรก / ดูอันดับ":"🏠 Home / My Rank"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1685,7 +1692,7 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail,corner}
   );
 }
 
-function Game({cfg,lang,setLang,net,onExit,onGameStats}){
+function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome}){
   const mySeat=net?net.mySeat:0;
   const isClient=!!(net&&net.role==="client");
   const isHost=!!(net&&net.role==="host");
@@ -2079,7 +2086,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats}){
       playApplause();
     }
     const hd=[...histRef.current];
-    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
   }
 
   const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2756,7 +2763,7 @@ async function profSetPig(code,pigId){
 }
 async function profLeaderboard(limit){
   const c=await profClient();
-  const {data,error}=await c.from("players").select("code,name,xp,slams,superslams,jd_won,qs_dodged,pig_id").order("xp",{ascending:false}).limit(limit||20);
+  const {data,error}=await c.from("players").select("code,name,xp,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id").order("xp",{ascending:false}).limit(limit||20);
   if(error)return [];
   return data||[];
 }
@@ -3225,6 +3232,7 @@ function HallOfFame({prof,lang,onBack}){
                   <div style={{background:big?"#12492f":"#0f3a2b",border:"1.5px solid "+medal[slot],borderRadius:8,padding:"5px 2px"}}>
                     <div style={{fontSize:big?13:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
                     <div style={{fontSize:big?13:12,fontWeight:700,color:"#f4d47a"}}>★ {(p.xp||0).toLocaleString()}</div>
+                    <div style={{fontSize:8,color:"#7a9b8c",marginTop:1}}>♦️{pct(p.jd_won,p.jd_seen)}% ♠️{pct(p.qs_dodged,p.qs_seen)}% 🎯{(p.slams||0)+(p.superslams||0)}</div>
                   </div>
                   <div style={{fontSize:10,color:medal[slot],marginTop:3}}>{L?"อันดับ ":"#"}{slot+1}</div>
                 </div>
@@ -3255,8 +3263,15 @@ function HallOfFame({prof,lang,onBack}){
           <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:"#0f3a2b",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
             <span style={{fontSize:12,fontWeight:700,color:"#7a9b8c",width:18}}>{i+4}</span>
             <PigAvatar id={p.pig_id||0} size={26}/>
-            <span style={{flex:1,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</span>
-            <span style={{fontSize:12,fontWeight:700,color:"#f4d47a"}}>★ {(p.xp||0).toLocaleString()}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
+              <div style={{fontSize:9,color:"#7a9b8c",display:"flex",gap:8,marginTop:1}}>
+                <span>♦️{pct(p.jd_won,p.jd_seen)}%</span>
+                <span>♠️{pct(p.qs_dodged,p.qs_seen)}%</span>
+                <span>🎯{(p.slams||0)+(p.superslams||0)}</span>
+              </div>
+            </div>
+            <span style={{fontSize:12,fontWeight:700,color:"#f4d47a",whiteSpace:"nowrap"}}>★ {(p.xp||0).toLocaleString()}</span>
           </div>
         ))}
 
@@ -3322,7 +3337,7 @@ function App(){
   if(showHall)return <React.Fragment>{codeModal}<HallOfFame prof={prof} lang={lang} onBack={()=>setShowHall(false)}/></React.Fragment>;
   if(online)return <React.Fragment>{codeModal}<OnlineLobby lang={lang} setLang={setLang} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/></React.Fragment>;
   if(!cfg)return <React.Fragment>{codeModal}<Setup onStart={c=>setCfg(c)} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)}/></React.Fragment>;
-  return <React.Fragment>{codeModal}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats}/></React.Fragment>;
+  return <React.Fragment>{codeModal}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>setCfg(null)}/></React.Fragment>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
