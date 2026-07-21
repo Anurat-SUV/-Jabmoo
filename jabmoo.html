@@ -43,7 +43,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0721.3";
+  var VER="v0721.4";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1092,7 +1092,19 @@ function mcDeal(unseen,counts,voids){
 }
 function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
   playLog=playLog||[];voids=voids||[{},{},{},{}];
-  const vld=getValid(hand,ls,tc);
+  let vld=getValid(hand,ls,tc);
+  // HARD RULE (mirrors heuristic v0719.1): following ♦ while J♦ is still unseen and
+  // not in our hand → never spend Q/K/A♦ if a lower diamond exists. Early-game MC is
+  // too noisy to learn this reliably, so we prune the candidates before sampling.
+  if(ls==="♦"&&vld.length>1&&vld.every(c=>c.suit==="♦")){
+    const jdGone=playLog.some(e=>e.card.suit==="♦"&&e.card.rank==="J")
+      ||tc.some(t=>t.card.suit==="♦"&&t.card.rank==="J")
+      ||hand.some(c=>c.suit==="♦"&&c.rank==="J");
+    if(!jdGone){
+      const lows=vld.filter(c=>c.rank!=="Q"&&c.rank!=="K"&&c.rank!=="A");
+      if(lows.length>0)vld=lows;
+    }
+  }
   if(vld.length===1)return vld[0];
   budgetMs=budgetMs||700;
   const start=Date.now();
