@@ -37,13 +37,14 @@ select{appearance:auto;}
 .hand-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.2);border-radius:3px;}
 .hand-fit{display:flex;width:100%;justify-content:center;}
 .hand-fit > div{flex-shrink:1;min-width:0;}
+input::placeholder{color:#9ca3af;opacity:1;}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0721.4";
+  var VER="v0721.7";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -735,13 +736,17 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       let mostNegIdx=-1,mostNeg=Infinity;
       for(let i=0;i<4;i++){if(i!==myIdx&&totals[i]<mostNeg){mostNeg=totals[i];mostNegIdx=i;}}
       const iAmMostNeg=totals[myIdx]<=mostNeg;
+      // SLAM GUARD: a winner piling hearts (≥10) only LOOKS negative — their pile is
+      // about to flip POSITIVE (slam +194). Handing them 10♣ would DOUBLE the slam.
+      const wHeartsD=(currentWinnerIdx>=0&&allWon&&allWon[currentWinnerIdx]?allWon[currentWinnerIdx]:[]).filter(c=>c.suit==="♥").length;
+      const winnerSlammingD=wHeartsD>=10;
       // dump 10♣ if the trick winner is an opponent who is quite negative
-      if(currentWinnerIdx!==myIdx&&currentWinnerIdx>=0){
+      if(currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD){
         // winner is the most negative, or winner already ≤ -50 → great target
         if(currentWinnerIdx===mostNegIdx||winnerScore<=-50)return tc10;
       }
       // if we're the most negative, never keep 10♣ — shed it to whoever's winning
-      if(iAmMostNeg&&currentWinnerIdx!==myIdx&&currentWinnerIdx>=0)return tc10;
+      if(iAmMostNeg&&currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD)return tc10;
     }
 
     // 3. DUMP big hearts (Q/K/A♥) — unless we're attempting slam ourselves
@@ -886,7 +891,9 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       const escapeClubs=myClubs.filter(c=>c.rank!=="10").length;
       const clubsGone=suitsPlayed(playLog)["♣"];
       const stuckRisk=iAmDeepNeg||escapeClubs<=2||clubsGone>=7;
-      if(goodTarget||stuckRisk)return has10C;
+      // SLAM GUARD: never shed 10♣ into a trick won by a slam-threat player (≥10 hearts piled)
+      const wHeartsC=(cwIdx>=0&&allWon&&allWon[cwIdx]?allWon[cwIdx]:[]).filter(c=>c.suit==="♥").length;
+      if((goodTarget||stuckRisk)&&wHeartsC<10)return has10C;
       // else: hold 10♣, fall through to normal club play
     }
     // Try to shed J♣ safely
@@ -1103,6 +1110,20 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
     if(!jdGone){
       const lows=vld.filter(c=>c.rank!=="Q"&&c.rank!=="K"&&c.rank!=="A");
       if(lows.length>0)vld=lows;
+    }
+  }
+  // HARD RULE: never gift 10♣ (×2) or J♦ (+100) as a losing card into a trick
+  // currently won by a slam-threat player (≥10 hearts piled) — their pile flips positive.
+  if(tc.length&&vld.length>1){
+    const w0=trickWin(tc,ls);
+    const wH=(allWon&&allWon[w0]?allWon[w0]:[]).filter(c=>c.suit==="♥").length;
+    if(w0!==myIdx&&wH>=10){
+      const hiLed=tc.some(t=>t.card.suit===ls)?Math.max(...tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank])):0;
+      const losing=c=>c.suit!==ls||RO[c.rank]<hiLed;
+      let pr=vld.filter(c=>!(c.suit==="♣"&&c.rank==="10"&&losing(c)));
+      if(pr.length)vld=pr;
+      pr=vld.filter(c=>!(c.suit==="♦"&&c.rank==="J"&&losing(c)));
+      if(pr.length)vld=pr;
     }
   }
   if(vld.length===1)return vld[0];
@@ -1356,17 +1377,21 @@ function PigAvatar({id,size}){
 }
 
 // ── LEVELS (from XP) ──
-const XP_LEVELS=[[1,"🐷 หมูน้อย",0],[2,"หมูหัดวิ่ง",150],[3,"หมูรู้ทาง",400],[4,"นักล่าหมู",800],[5,"มือปราบ Q♠",1400],[6,"เขี้ยวลากดิน",2200],[7,"เจ้าพ่อ J♦",3200],[8,"มือวาง 10♣",4600],[9,"ขาใหญ่โต๊ะเขียว",6200],[10,"เซียนโต๊ะทอง",8000],[11,"เซียนเหนือเซียน",10500],[12,"จอมยุทธ์ไพ่",13500],[13,"ปรมาจารย์",17000],[14,"เหนือเมฆ",21000],[15,"👑 เทพจับหมู",25000]];
+const XP_LEVELS=[[1,"🐷 หมูน้อย",0],[2,"หมูหัดวิ่ง",150],[3,"หมูรู้ทาง",400],[4,"นักล่าหมู",800],[5,"มือปราบ Q♠",1400],[6,"เขี้ยวลากดิน",3000],[7,"เจ้าพ่อ J♦",5000],[8,"มือวาง 10♣",7500],[9,"ขาใหญ่โต๊ะเขียว",10500],[10,"เซียนโต๊ะทอง",14000],[11,"เซียนเหนือเซียน",18500],[12,"จอมยุทธ์ไพ่",24000],[13,"ปรมาจารย์",31000],[14,"เหนือเมฆ",40000],[15,"👑 เทพจับหมู",50000]];
 function levelInfo(xp){
   let cur=XP_LEVELS[0],next=null;
   for(const Lv of XP_LEVELS){if(xp>=Lv[2])cur=Lv;else{next=Lv;break;}}
-  if(!next){const e=Math.floor((xp-25000)/5000);cur=[15+e,"👑 เทพจับหมู"+(e>0?" +"+e:""),25000+e*5000];next=[16+e,"",25000+(e+1)*5000];}
+  if(!next){const e=Math.floor((xp-50000)/10000);cur=[15+e,"👑 เทพจับหมู"+(e>0?" +"+e:""),50000+e*10000];next=[16+e,"",50000+(e+1)*10000];}
   return {lv:cur[0],name:cur[1],base:cur[2],next:next[2],pct:Math.min(100,Math.round(100*(xp-cur[2])/(next[2]-cur[2])))};
 }
 function pct(n,d){return d>0?Math.round(100*n/d):0;}
 
 function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHall}){
-  const [nm,setNm]=useState(["","","",""]);
+  const [nm,setNm]=useState([(prof&&prof.name)||"","","",""]);
+  useEffect(()=>{ // profile name is the source of truth for seat 1
+    const n=(prof&&prof.name)||"";
+    setNm(m=>m[0]===n?m:[n,m[1],m[2],m[3]]);
+  },[prof&&prof.name]);
   const [isBot,setIsBot]=useState([false,true,true,true]);
   const [lv,setLv]=useState([3,3,3,3]); // single smartest level; picker hidden
   const [em,setEm]=useState("8games");
@@ -3146,6 +3171,34 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
 
 
 // ── ROOT ───────────────────────────────────────────────────────
+function NamePrompt({lang,onSave}){
+  const L=lang==="th";
+  const [v,setV]=useState("");
+  const [busy,setBusy]=useState(false);
+  async function save(){
+    const name=v.trim();
+    if(!name)return;
+    setBusy(true);
+    try{await onSave(name);}catch(e){}
+    setBusy(false);
+  }
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#0b3d2e",border:"2px solid rgba(212,175,55,0.7)",borderRadius:16,padding:"1.4rem 1.2rem",width:"100%",maxWidth:320,color:"#fff",textAlign:"center"}}>
+        <div style={{fontSize:34,marginBottom:6}}>🐷</div>
+        <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:4}}>{L?"ตั้งชื่อผู้เล่นของคุณ":"Set your player name"}</div>
+        <div style={{fontSize:11,color:"#a7f3d0",marginBottom:14,lineHeight:1.5}}>{L?"ชื่อนี้จะใช้ในเกม สถิติ และตารางอันดับ Hall of Fame":"Used in games, stats, and the Hall of Fame"}</div>
+        <input autoFocus value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save();}} maxLength={16}
+          placeholder={L?"ใส่ชื่อให้หน่อยครับ":"Please enter your name"}
+          style={{width:"100%",boxSizing:"border-box",textAlign:"center",fontSize:16,fontWeight:700,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.4)",borderRadius:10,padding:"10px",color:"#fff",outline:"none",marginBottom:12}}/>
+        <button onClick={save} disabled={busy||!v.trim()} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:v.trim()?"#d4af37":"#6b7280",color:"#1a2e1a",fontWeight:800,fontSize:15,cursor:v.trim()?"pointer":"default"}}>
+          {busy?"...":(L?"ตกลง":"OK")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CodeModal({prof,lang,onClose,onRestore,onRename,onSetPig}){
   const L=lang==="th";
   const [tab,setTab]=useState("mine");
@@ -3344,11 +3397,13 @@ function App(){
     if(updated)setProf(updated);
   }
 
+  const needName=!!(prof&&prof.code)&&!(prof.name&&prof.name.trim())&&!showCode;
+  const namePrompt=needName?<NamePrompt lang={lang} onSave={doRename}/>:null;
   const codeModal=showCode?<CodeModal prof={prof} lang={lang} onClose={()=>{setShowCode(false);setNewCode(false);}} onRestore={doRestore} onRename={doRename} onSetPig={doSetPig}/>:null;
 
-  if(showHall)return <React.Fragment>{codeModal}<HallOfFame prof={prof} lang={lang} onBack={()=>setShowHall(false)}/></React.Fragment>;
-  if(online)return <React.Fragment>{codeModal}<OnlineLobby lang={lang} setLang={setLang} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/></React.Fragment>;
-  if(!cfg)return <React.Fragment>{codeModal}<Setup onStart={c=>setCfg(c)} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)}/></React.Fragment>;
+  if(showHall)return <React.Fragment>{codeModal}{namePrompt}<HallOfFame prof={prof} lang={lang} onBack={()=>setShowHall(false)}/></React.Fragment>;
+  if(online)return <React.Fragment>{codeModal}{namePrompt}<OnlineLobby lang={lang} setLang={setLang} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/></React.Fragment>;
+  if(!cfg)return <React.Fragment>{codeModal}{namePrompt}<Setup onStart={c=>setCfg(c)} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)}/></React.Fragment>;
   return <React.Fragment>{codeModal}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>setCfg(null)}/></React.Fragment>;
 }
 
