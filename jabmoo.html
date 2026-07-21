@@ -43,7 +43,7 @@ select{appearance:auto;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0720.3";
+  var VER="v0721.2";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -459,6 +459,17 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
   const criticalSlam=heartsByPlayer.some((h,i)=>i!==myIdx&&h>=10);
   const slammerIdx=heartsByPlayer.reduce((mi,h,i)=>h>heartsByPlayer[mi]?i:mi,0);
   const iAmWorst=totals[myIdx]===Math.min(...totals);
+  // Penalty cards I've ALREADY captured this round (pig / hearts). If I'm holding losses
+  // and 10♣ is still live, catching it would DOUBLE my damage — so I must not lead into it.
+  const myScoreCards=(allWon&&allWon[myIdx])?allWon[myIdx]:[];
+  // Real penalty already captured this round: pig (−100) + each heart (−10 baseline weight).
+  // Use the game's own scorer on my captured cards so it matches actual scoring.
+  const myPenaltyNow=cSc?myScoreCards.reduce((s,c)=>s+Math.min(0,cSc(c)),0):
+    myScoreCards.reduce((s,c)=>s+((c.suit==="♠"&&c.rank==="Q")?-100:(c.suit==="♥"?-10:0)),0);
+  // Danger zone: I'm already −100 or worse this round (a captured pig, OR enough hearts).
+  // Catching 10♣ now would DOUBLE all of it — treat clubs like poison, same as when holding the pig.
+  const iHoldLosses=myPenaltyNow<=-100;
+  const tenCDanger=!tenCOut&&!tenCInHand; // 10♣ live and not mine
 
   // Count remaining spades (not in hand, not played) for Q♠ timing
   const spadesRemaining=RANKS.filter(r=>!hand.some(c=>c.suit==="♠"&&c.rank===r)&&!played.some(c=>c.suit==="♠"&&c.rank===r));
@@ -525,6 +536,9 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       if(!qOut&&!qInHand&&c.suit==="♠"&&(c.rank==="K"||c.rank==="A"))return false;
       // Never lead K♣ or A♣ if 10♣ not out and not in our hand (risk catching the ×2)
       if(!tenCOut&&!tenCInHand&&c.suit==="♣"&&(c.rank==="K"||c.rank==="A"))return false;
+      // If I already hold losses this round and 10♣ is still live, avoid leading a HIGH club
+      // of any rank — winning that trick could pull 10♣ onto my pile and double my damage.
+      if(iHoldLosses&&tenCDanger&&c.suit==="♣"&&RO[c.rank]>=RO["10"])return false;
       if(isSC(c)&&!(c.suit==="♦"&&c.rank==="J"))return false;
       // Never lead J♦ unless it's boss (cannot be beaten)
       if(c.suit==="♦"&&c.rank==="J"&&!jdBoss)return false;
@@ -540,6 +554,8 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     if(!qOut){
       for(const suit of ["♣","♦","♠"]){
         if(suit==="♠"&&qInHand)continue;
+        // don't hunt by leading a club that risks catching the 10♣ ×2
+        if(suit==="♣"&&!tenCOut&&!tenCInHand)continue;
         const voidOpps=countVoidOpponents(voids,myIdx,suit);
         if(voidOpps>0){
           const myInSuit=pool.filter(c=>c.suit===suit);
@@ -573,7 +589,13 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
 
     // Prefer leading LOW non-score cards (keep high cards; let opponents flush dangers).
     // From the shortest suit (to create a void for dumping later), play the lowest.
-    const midPool=pool.filter(c=>!isSC(c)&&c.suit!=="♥"&&RO[c.rank]<=9);
+    let midPool=pool.filter(c=>!isSC(c)&&c.suit!=="♥"&&RO[c.rank]<=9);
+    // If I hold losses and 10♣ is live, prefer the safest low card overall (avoid clubs
+    // entirely, and prefer a low card that won't win the trick) — a plain low ♦ is ideal.
+    if(iHoldLosses&&tenCDanger){
+      const safe=pool.filter(c=>c.suit!=="♣"&&!isSC(c)&&RO[c.rank]<=9);
+      if(safe.length)return safe.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+    }
     if(midPool.length){
       const sc2={};
       for(const c of midPool)sc2[c.suit]=(sc2[c.suit]||0)+1;
@@ -1258,7 +1280,80 @@ function Toast({msg,cards}){
 // ── SETUP ──────────────────────────────────────────────────────
 const SS={fontSize:13,padding:"5px 8px",borderRadius:7,border:"1px solid #d1d5db",background:"#fff",color:"#374151",cursor:"pointer",outline:"none"};
 
-function Setup({onStart,onOnline,lang,setLang}){
+// ── PIG AVATARS (original SVG art — royalty-free, ours) ──
+// Swappable later for AI-rendered PNGs the user owns. id 0-3.
+const PIG_STYLES=[
+  {id:0,name:"ราชาหมู",ring:"#d4af37"},
+  {id:1,name:"หมูเท่",ring:"#c0c0c0"},
+  {id:2,name:"โจรสลัดหมู",ring:"#cd7f32"},
+  {id:3,name:"หมูสุภาพบุรุษ",ring:"#5dcaa5"}
+];
+function PigAvatar({id,size}){
+  const s=size||64;const i=((id||0)%4+4)%4;
+  const common=React.createElement;
+  const face=(cy)=>[
+    React.createElement("circle",{key:"h",cx:50,cy:cy,r:30,fill:"#f7a9be",stroke:"#d67e97","strokeWidth":1.5}),
+    React.createElement("path",{key:"e1",d:"M26 "+(cy-20)+" L22 "+(cy-34)+" L34 "+(cy-24)+" Z",fill:"#f7a9be",stroke:"#d67e97","strokeWidth":1.5}),
+    React.createElement("path",{key:"e2",d:"M74 "+(cy-20)+" L78 "+(cy-34)+" L66 "+(cy-24)+" Z",fill:"#f7a9be",stroke:"#d67e97","strokeWidth":1.5}),
+    React.createElement("ellipse",{key:"sn",cx:50,cy:cy+10,rx:13,ry:9,fill:"#ec8fa8"}),
+    React.createElement("ellipse",{key:"n1",cx:45,cy:cy+10,rx:2.5,ry:4,fill:"#b95d75"}),
+    React.createElement("ellipse",{key:"n2",cx:55,cy:cy+10,rx:2.5,ry:4,fill:"#b95d75"}),
+    React.createElement("path",{key:"m",d:"M40 "+(cy+20)+" Q50 "+(cy+26)+" 60 "+(cy+20),fill:"none",stroke:"#b95d75","strokeWidth":2,"strokeLinecap":"round"})
+  ];
+  const eyes=(cy,both)=>[
+    React.createElement("circle",{key:"y1",cx:40,cy:cy-4,r:4.5,fill:"#3a2028"}),
+    React.createElement("circle",{key:"g1",cx:41.5,cy:cy-5.5,r:1.5,fill:"#fff"}),
+    ...(both?[React.createElement("circle",{key:"y2",cx:60,cy:cy-4,r:4.5,fill:"#3a2028"}),
+    React.createElement("circle",{key:"g2",cx:61.5,cy:cy-5.5,r:1.5,fill:"#fff"})]:[])
+  ];
+  let hat=null,eyeEls=null;
+  if(i===0){ // king — crown
+    eyeEls=eyes(54,true);
+    hat=[React.createElement("path",{key:"c",d:"M28 30 L36 18 L44 26 L50 14 L56 26 L64 18 L72 30 Z",fill:"#f4d47a",stroke:"#c9a63f","strokeWidth":1.5,"strokeLinejoin":"round"}),
+      React.createElement("circle",{key:"j1",cx:36,cy:18,r:2.5,fill:"#e24b4a"}),
+      React.createElement("circle",{key:"j2",cx:50,cy:14,r:2.5,fill:"#378add"}),
+      React.createElement("circle",{key:"j3",cx:64,cy:18,r:2.5,fill:"#e24b4a"})];
+  }else if(i===1){ // cool — sunglasses
+    hat=[React.createElement("rect",{key:"g1",x:30,y:44,width:17,height:11,rx:5,fill:"#1a1a2e"}),
+      React.createElement("rect",{key:"g2",x:53,y:44,width:17,height:11,rx:5,fill:"#1a1a2e"}),
+      React.createElement("rect",{key:"br",x:47,y:48,width:6,height:2,fill:"#1a1a2e"}),
+      React.createElement("path",{key:"cap",d:"M28 30 Q50 20 72 30 L70 34 Q50 26 30 34 Z",fill:"#2c2c3e"})];
+  }else if(i===2){ // pirate
+    eyeEls=eyes(52,false).concat([
+      React.createElement("rect",{key:"p",x:54,y:47,width:12,height:11,rx:2,fill:"#1a1a1a"}),
+      React.createElement("path",{key:"s1",d:"M54 52 Q48 50 44 52",fill:"none",stroke:"#1a1a1a","strokeWidth":1.5}),
+      React.createElement("path",{key:"s2",d:"M66 52 Q72 50 74 54",fill:"none",stroke:"#1a1a1a","strokeWidth":1.5})]);
+    hat=[React.createElement("path",{key:"h1",d:"M22 30 Q50 16 78 30 L78 34 Q50 24 22 34 Z",fill:"#3a2c22"}),
+      React.createElement("path",{key:"h2",d:"M22 30 Q50 16 78 30 L74 28 Q50 20 26 28 Z",fill:"#5a3c2a"}),
+      React.createElement("circle",{key:"sk",cx:50,cy:26,r:5,fill:"#f0ebe0"}),
+      React.createElement("circle",{key:"se1",cx:48,cy:25,r:1,fill:"#3a2c22"}),
+      React.createElement("circle",{key:"se2",cx:52,cy:25,r:1,fill:"#3a2c22"})];
+  }else{ // gentleman — top hat
+    eyeEls=eyes(53,true);
+    hat=[React.createElement("rect",{key:"br",x:24,y:30,width:52,height:5,rx:2,fill:"#1a1a2e"}),
+      React.createElement("rect",{key:"tp",x:33,y:8,width:34,height:24,rx:2,fill:"#1a1a2e"}),
+      React.createElement("rect",{key:"bd",x:33,y:24,width:34,height:4,fill:"#7a2c3e"})];
+  }
+  const cy=i===0?54:i===2?55:i===3?56:54;
+  return React.createElement("svg",{viewBox:"0 0 100 100",width:s,height:s,role:"img","aria-label":PIG_STYLES[i].name},
+    React.createElement("ellipse",{cx:50,cy:92,rx:26,ry:5,fill:"#000",opacity:0.2}),
+    ...face(cy),
+    ...(eyeEls||[]),
+    ...(hat||[])
+  );
+}
+
+// ── LEVELS (from XP) ──
+const XP_LEVELS=[[1,"🐷 หมูน้อย",0],[2,"หมูหัดวิ่ง",150],[3,"หมูรู้ทาง",400],[4,"นักล่าหมู",800],[5,"มือปราบ Q♠",1400],[6,"เขี้ยวลากดิน",2200],[7,"เจ้าพ่อ J♦",3200],[8,"มือวาง 10♣",4600],[9,"ขาใหญ่โต๊ะเขียว",6200],[10,"เซียนโต๊ะทอง",8000],[11,"เซียนเหนือเซียน",10500],[12,"จอมยุทธ์ไพ่",13500],[13,"ปรมาจารย์",17000],[14,"เหนือเมฆ",21000],[15,"👑 เทพจับหมู",25000]];
+function levelInfo(xp){
+  let cur=XP_LEVELS[0],next=null;
+  for(const Lv of XP_LEVELS){if(xp>=Lv[2])cur=Lv;else{next=Lv;break;}}
+  if(!next){const e=Math.floor((xp-25000)/5000);cur=[15+e,"👑 เทพจับหมู"+(e>0?" +"+e:""),25000+e*5000];next=[16+e,"",25000+(e+1)*5000];}
+  return {lv:cur[0],name:cur[1],base:cur[2],next:next[2],pct:Math.min(100,Math.round(100*(xp-cur[2])/(next[2]-cur[2])))};
+}
+function pct(n,d){return d>0?Math.round(100*n/d):0;}
+
+function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHall}){
   const [nm,setNm]=useState(["","","",""]);
   const [isBot,setIsBot]=useState([false,true,true,true]);
   const [lv,setLv]=useState([3,3,3,3]); // single smartest level; picker hidden
@@ -1269,7 +1364,7 @@ function Setup({onStart,onOnline,lang,setLang}){
   const L=lang==="th";
   function start(){
     onStart({
-      players:nm.map((n,i)=>({name:n||(isBot[i]?"Bot "+(i+1):"P"+(i+1)),isBot:i===0?false:isBot[i],botLevel:lv[i]})),
+      players:nm.map((n,i)=>({name:i===0?((prof&&prof.name)||n||(L?"คุณ":"You")):(n||(isBot[i]?"Bot "+(i+1):"P"+(i+1))),isBot:i===0?false:isBot[i],botLevel:lv[i]})),
       endMode:em,threshold:th,numGames,showSec
     });
   }
@@ -1284,6 +1379,43 @@ function Setup({onStart,onOnline,lang,setLang}){
             ))}
           </div>
         </div>
+
+        {prof&&(()=>{const li=levelInfo(prof.xp||0);return (
+          <div style={{background:"linear-gradient(135deg,#0b3d2e,#14532d)",borderRadius:12,padding:"0.7rem 0.85rem",marginBottom:"1.1rem",border:"1.5px solid rgba(212,175,55,0.55)",color:"#fff"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+              <button onClick={onShowCode} style={{padding:0,border:"none",background:"transparent",cursor:"pointer",lineHeight:0}}><PigAvatar id={prof.pig_id||0} size={38}/></button>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{prof.name||(L?"ยังไม่มีชื่อ":"No name")}</div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:10,fontWeight:800,background:"rgba(212,175,55,0.95)",color:"#1a2e1a",borderRadius:5,padding:"1px 6px"}}>Lv.{li.lv}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:"#fde68a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{li.name}</span>
+                </div>
+              </div>
+              <button onClick={onShowHall} title="Hall of Fame" style={{fontSize:18,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.5)",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>🏆</button>
+              <button onClick={onShowCode} style={{fontSize:11,fontWeight:800,letterSpacing:1,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.5)",borderRadius:7,padding:"5px 8px",color:"#fff",cursor:"pointer"}}>🔑 {prof.code}</button>
+            </div>
+            <div style={{background:"rgba(0,0,0,0.35)",borderRadius:6,height:9,overflow:"hidden"}}>
+              <div style={{width:li.pct+"%",height:"100%",background:"linear-gradient(90deg,#d4af37,#fde68a)",transition:"width 0.6s"}}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#d1fae5",marginTop:3,marginBottom:7}}>
+              <span>⭐ {(prof.xp||0).toLocaleString()} {L?"แต้ม":"pts"}</span>
+              <span>{L?"อีก":"next"} {(li.next-(prof.xp||0)).toLocaleString()} → Lv.{li.lv+1}</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,textAlign:"center"}}>
+              {[
+                [L?"เกม":"Games",(prof.games||0)],
+                [L?"เก็บ J♦":"J♦ won",pct(prof.jd_won,prof.jd_seen)+"%"],
+                [L?"หนี Q♠":"Dodge Q♠",pct(prof.qs_dodged,prof.qs_seen)+"%"],
+                [L?"สแลม":"Slams",(prof.slams||0)+(prof.superslams?" · "+prof.superslams+"⭐":"")]
+              ].map((s,i)=>(
+                <div key={i} style={{background:"rgba(0,0,0,0.25)",borderRadius:7,padding:"4px 2px"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#fde68a"}}>{s[1]}</div>
+                  <div style={{fontSize:9,color:"#a7f3d0",marginTop:1}}>{s[0]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );})()}
 
         {[0,1,2,3].map(i=>(
           <div key={i} style={{background:"#f9fafb",borderRadius:10,padding:"0.6rem",marginBottom:"0.4rem",border:"1px solid #e5e7eb",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -1553,7 +1685,7 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail,corner}
   );
 }
 
-function Game({cfg,lang,setLang,net,onExit}){
+function Game({cfg,lang,setLang,net,onExit,onGameStats}){
   const mySeat=net?net.mySeat:0;
   const isClient=!!(net&&net.role==="client");
   const isHost=!!(net&&net.role==="host");
@@ -1568,6 +1700,30 @@ function Game({cfg,lang,setLang,net,onExit}){
   const tmr=useRef(null);
   const bk=useRef("");
   function ap(a){sRef.current=gReduce(sRef.current,a);rd();}
+
+  // ── STATS: commit XP + skill stats once per finished game (roundSummary or gameOver) ──
+  const statFired=useRef({});
+  const wasOverStat=useRef(false);
+  useEffect(()=>{
+    const Sr=sRef.current;if(!Sr||!onGameStats)return;
+    if(wasOverStat.current&&!Sr.gameOver){wasOverStat.current=false;statFired.current={};}
+    if(Sr.gameOver)wasOverStat.current=true;
+    const summary=Sr.phase==="roundSummary"&&Sr.roundScores;
+    const over=Sr.gameOver&&Sr.lastRoundScores;
+    if(!summary&&!over)return;
+    const me=mySeat;
+    if(!cfg.players[me]||cfg.players[me].isBot)return; // only the human on this device
+    const key=(Sr.gameNum||0)+(over?"F":"S");
+    if(statFired.current[key])return;
+    statFired.current[key]=1;
+    const rs=summary?Sr.roundScores:Sr.lastRoundScores;
+    const myWon=Sr.wonCards[me]||[];
+    const superSlam=rs[me]===788;
+    const matchDone=!!over;
+    const xpAdd=xpForGame(rs[me],rs,myWon,matchDone,cfg.numGames||8);
+    const deltas=statDeltas(myWon,rs[me],rs,superSlam);
+    onGameStats(xpAdd,deltas);
+  });
 
   useEffect(()=>{
     if(isClient)return; // client waits for host frames; engine runs on host/local
@@ -2508,6 +2664,103 @@ const SUPABASE_URL="https://kivamkangzuyjwfouusr.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_e4N4h_EupJMRg9rC3R8CGw_kgXZH7bI";
 const SB_BAKED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
 
+// ── PROFILE / STATS (Supabase-backed, per-player 4-char code) ──────
+const PROF_KEY="jm-profile-v1";
+let _profClient=null;
+async function profClient(){
+  if(_profClient)return _profClient;
+  const mod=await loadSupabase();
+  _profClient=mod.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  return _profClient;
+}
+const CODE_ALPHABET="ACDEFGHJKLMNPQRTUVWXY34679"; // no confusable 0/O/1/I/2/Z/5/S/8/B
+function genCode(){let s="";for(let i=0;i<4;i++)s+=CODE_ALPHABET[Math.floor(Math.random()*CODE_ALPHABET.length)];return s;}
+function profLocal(){try{return JSON.parse(localStorage.getItem(PROF_KEY));}catch(e){return null;}}
+function profSaveLocal(p){try{localStorage.setItem(PROF_KEY,JSON.stringify(p));}catch(e){}}
+const BLANK_STATS={xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0,superslams:0,pig_id:0};
+
+// Create a brand-new player row with a unique code (retries on collision)
+async function profCreate(name){
+  const c=await profClient();
+  for(let attempt=0;attempt<12;attempt++){
+    const code=genCode();
+    const row={code,name:name||"",...BLANK_STATS};
+    const {error}=await c.from("players").insert(row);
+    if(!error){profSaveLocal(row);return row;}
+    if(!(error.code==="23505"||/duplicate/i.test(error.message||"")))throw error; // not a collision → real error
+  }
+  throw new Error("code space busy, try again");
+}
+// Load a player row by code (for restoring on another device)
+async function profFetch(code){
+  const c=await profClient();
+  const {data,error}=await c.from("players").select("*").eq("code",code).maybeSingle();
+  if(error)throw error;
+  if(data)profSaveLocal(data);
+  return data; // null if not found
+}
+// Compute per-game stat deltas from a finished game for the given seat
+function statDeltas(myWon,myScore,allScores,didSuperSlam){
+  const d={games:1,jd_won:0,jd_seen:1,qs_dodged:0,qs_seen:1,slams:0,superslams:0};
+  if(myWon.some(c=>c.suit==="♦"&&c.rank==="J"))d.jd_won=1;
+  if(!myWon.some(c=>c.suit==="♠"&&c.rank==="Q"))d.qs_dodged=1; // Q♠ went elsewhere (or nobody = still dodged)
+  const heartsAll=myWon.filter(c=>c.suit==="♥").length;
+  if(heartsAll>=13){if(didSuperSlam)d.superslams=1;else d.slams=1;}
+  return d;
+}
+// XP per game (always positive) — mirrors the agreed earn table
+function xpForGame(myScore,allScores,myWon,matchDone,matchGames){
+  let xp=20; // played a game
+  const rank=allScores.filter(s=>s>myScore).length+1;
+  xp+=[40,25,12,5][rank-1]||5;
+  if(myWon.some(c=>c.suit==="♦"&&c.rank==="J"))xp+=15;
+  if(myScore>=0)xp+=10;
+  if(!myWon.some(c=>c.suit==="♠"&&c.rank==="Q"))xp+=5;
+  const hearts=myWon.filter(c=>c.suit==="♥").length;
+  if(hearts>=13)xp+=(myScore===788?150:60);
+  if(matchDone)xp+=30;
+  return xp;
+}
+// Push accumulated deltas to Supabase (read-modify-write; best-effort)
+async function profCommit(code,xpAdd,deltas){
+  const c=await profClient();
+  const {data,error}=await c.from("players").select("*").eq("code",code).maybeSingle();
+  if(error||!data)return null;
+  const upd={
+    xp:(data.xp||0)+xpAdd,
+    games:(data.games||0)+(deltas.games||0),
+    jd_won:(data.jd_won||0)+(deltas.jd_won||0),
+    jd_seen:(data.jd_seen||0)+(deltas.jd_seen||0),
+    qs_dodged:(data.qs_dodged||0)+(deltas.qs_dodged||0),
+    qs_seen:(data.qs_seen||0)+(deltas.qs_seen||0),
+    slams:(data.slams||0)+(deltas.slams||0),
+    superslams:(data.superslams||0)+(deltas.superslams||0),
+    updated_at:new Date().toISOString()
+  };
+  const {data:d2,error:e2}=await c.from("players").update(upd).eq("code",code).select().maybeSingle();
+  if(e2)return null;
+  if(d2)profSaveLocal(d2);
+  return d2;
+}
+async function profRename(code,name){
+  const c=await profClient();
+  const {data,error}=await c.from("players").update({name,updated_at:new Date().toISOString()}).eq("code",code).select().maybeSingle();
+  if(!error&&data)profSaveLocal(data);
+  return data;
+}
+async function profSetPig(code,pigId){
+  const c=await profClient();
+  const {data,error}=await c.from("players").update({pig_id:pigId,updated_at:new Date().toISOString()}).eq("code",code).select().maybeSingle();
+  if(!error&&data)profSaveLocal(data);
+  return data;
+}
+async function profLeaderboard(limit){
+  const c=await profClient();
+  const {data,error}=await c.from("players").select("code,name,xp,slams,superslams,jd_won,qs_dodged,pig_id").order("xp",{ascending:false}).limit(limit||20);
+  if(error)return [];
+  return data||[];
+}
+
 // ── ONLINE: TRANSPORT LAYER ─────────────────────────────────────
 // Common interface: make(...) -> { send(type,payload), close(), offline }
 // MockTransport = BroadcastChannel (same-origin tabs). SupabaseTransport = cross-device.
@@ -2874,13 +3127,202 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
 
 
 // ── ROOT ───────────────────────────────────────────────────────
+function CodeModal({prof,lang,onClose,onRestore,onRename,onSetPig}){
+  const L=lang==="th";
+  const [tab,setTab]=useState("mine");
+  const [inp,setInp]=useState("");
+  const [nm,setNm]=useState(prof?prof.name:"");
+  const [pig,setPig]=useState(prof?(prof.pig_id||0):0);
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  async function restore(){
+    const code=inp.trim().toUpperCase();
+    if(code.length!==4){setErr(L?"รหัสต้องมี 4 ตัว":"Code must be 4 chars");return;}
+    setBusy(true);setErr("");
+    try{const p=await profFetch(code);if(!p){setErr(L?"ไม่พบรหัสนี้":"Code not found");}else{onRestore(p);onClose();}}
+    catch(e){setErr(L?"เชื่อมต่อไม่ได้":"Connection error");}
+    setBusy(false);
+  }
+  async function saveName(){setBusy(true);try{await onRename(nm.trim());if(pig!==(prof&&prof.pig_id))await onSetPig(pig);}catch(e){}setBusy(false);}
+  function pickPig(id){setPig(id);onSetPig(id);}
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0b3d2e",border:"2px solid rgba(212,175,55,0.7)",borderRadius:16,padding:"1.2rem",width:"100%",maxWidth:340,color:"#fff"}}>
+        <div style={{display:"flex",gap:6,marginBottom:14}}>
+          <button onClick={()=>setTab("mine")} style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:tab==="mine"?"#d4af37":"rgba(255,255,255,0.1)",color:tab==="mine"?"#1a2e1a":"#fff"}}>{L?"รหัสของฉัน":"My Code"}</button>
+          <button onClick={()=>setTab("restore")} style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:tab==="restore"?"#d4af37":"rgba(255,255,255,0.1)",color:tab==="restore"?"#1a2e1a":"#fff"}}>{L?"กู้คะแนน":"Restore"}</button>
+        </div>
+        {tab==="mine"?(
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:12,color:"#a7f3d0",marginBottom:6}}>{L?"รหัสผู้เล่นของคุณ":"Your player code"}</div>
+            <div style={{fontSize:38,fontWeight:900,letterSpacing:8,color:"#fde68a",marginBottom:4}}>{prof?prof.code:"----"}</div>
+            <div style={{fontSize:12,color:"#fca5a5",background:"rgba(0,0,0,0.3)",borderRadius:8,padding:"8px 10px",marginBottom:14,lineHeight:1.5}}>📸 {L?"แคปหน้าจอเก็บรหัสนี้ไว้! ใช้กู้คะแนนตอนเปลี่ยนเครื่องหรือเปลี่ยนชื่อ ถ้าลืมรหัสจะกู้คะแนนไม่ได้":"Screenshot this code! It restores your progress on another device. Lost code = lost progress."}</div>
+            <div style={{fontSize:11,color:"#a7f3d0",marginBottom:6}}>{L?"เลือกหมูประจำตัว":"Choose your pig"}</div>
+            <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:12}}>
+              {PIG_STYLES.map(p=>(
+                <button key={p.id} onClick={()=>pickPig(p.id)} style={{padding:2,borderRadius:12,border:pig===p.id?("2.5px solid "+p.ring):"2.5px solid transparent",background:pig===p.id?"rgba(255,255,255,0.1)":"transparent",cursor:"pointer",lineHeight:0}}>
+                  <PigAvatar id={p.id} size={52}/>
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <input value={nm} onChange={e=>setNm(e.target.value)} maxLength={16} placeholder={L?"ชื่อ":"Name"} style={{flex:1,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.4)",borderRadius:8,padding:"7px 10px",color:"#fff",fontSize:13,outline:"none"}}/>
+              <button onClick={saveName} disabled={busy} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#d4af37",color:"#1a2e1a",fontWeight:800,cursor:"pointer"}}>{L?"บันทึก":"Save"}</button>
+            </div>
+          </div>
+        ):(
+          <div>
+            <div style={{fontSize:12,color:"#a7f3d0",marginBottom:8}}>{L?"กรอกรหัส 4 ตัวเพื่อดึงคะแนนเดิมกลับมา (คะแนนปัจจุบันในเครื่องนี้จะถูกแทนที่)":"Enter your 4-char code to restore progress (replaces this device's current profile)"}</div>
+            <input value={inp} onChange={e=>setInp(e.target.value.toUpperCase())} maxLength={4} placeholder="K7Q2" style={{width:"100%",textAlign:"center",fontSize:26,fontWeight:900,letterSpacing:8,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.4)",borderRadius:8,padding:"8px",color:"#fde68a",outline:"none",marginBottom:10,boxSizing:"border-box"}}/>
+            {err&&<div style={{fontSize:12,color:"#fca5a5",marginBottom:8,textAlign:"center"}}>{err}</div>}
+            <button onClick={restore} disabled={busy} style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:"#d4af37",color:"#1a2e1a",fontWeight:800,fontSize:14,cursor:"pointer"}}>{busy?"...":(L?"กู้คะแนน":"Restore")}</button>
+          </div>
+        )}
+        <button onClick={onClose} style={{width:"100%",marginTop:12,padding:"7px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"#a7f3d0",cursor:"pointer",fontSize:12}}>{L?"ปิด":"Close"}</button>
+      </div>
+    </div>
+  );
+}
+
+function HallOfFame({prof,lang,onBack}){
+  const L=lang==="th";
+  const [rows,setRows]=useState(null);
+  const [err,setErr]=useState(false);
+  useEffect(()=>{
+    let live=true;
+    profLeaderboard(20).then(r=>{if(live)setRows(r);}).catch(()=>{if(live)setErr(true);});
+    return()=>{live=false;};
+  },[]);
+  const medal=["#d4af37","#c0c0c0","#cd7f32"];
+  const podium=rows?rows.slice(0,3):[];
+  const rest=rows?rows.slice(3):[];
+  const myRank=rows&&prof?rows.findIndex(r=>r.code===prof.code):-1;
+  const star=c=>React.createElement("span",{style:{color:"#f4d47a"}},"★");
+  return (
+    <div className="vh100" style={{background:"#08251b",overflowY:"auto",color:"#fff",fontFamily:"sans-serif"}}>
+      <div style={{maxWidth:440,margin:"0 auto",padding:"env(safe-area-inset-top) 12px 24px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 2px 6px"}}>
+          <button onClick={onBack} style={{width:34,height:34,borderRadius:17,border:"1.5px solid #d4af37",background:"transparent",color:"#d4af37",cursor:"pointer",fontSize:16}}>←</button>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:22,fontWeight:800,color:"#f4d47a",letterSpacing:1}}>🐷 Hall of Fame</div>
+            <div style={{fontSize:10,color:"#7a9b8c",letterSpacing:2}}>{L?"ตำนานผู้เล่นจับหมู":"Legends live forever"}</div>
+          </div>
+          <div style={{width:34}}/>
+        </div>
+
+        {!rows&&!err&&<div style={{textAlign:"center",padding:"3rem 0",color:"#7a9b8c"}}>{L?"กำลังโหลด...":"Loading..."}</div>}
+        {err&&<div style={{textAlign:"center",padding:"3rem 0",color:"#fca5a5"}}>{L?"เชื่อมต่อไม่ได้":"Connection error"}</div>}
+
+        {rows&&rows.length>0&&(
+          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"10px 0 16px"}}>
+            {[1,0,2].map(slot=>{const p=podium[slot];if(!p)return <div key={slot} style={{flex:1}}/>;const big=slot===0;
+              return (
+                <div key={slot} style={{flex:big?1.15:1,textAlign:"center"}}>
+                  {big&&<div style={{fontSize:15,color:"#f4d47a"}}>👑</div>}
+                  <div style={{width:big?58:46,height:big?58:46,margin:"0 auto 4px",borderRadius:"50%",background:"#12492f",border:"2.5px solid "+medal[slot],display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                    <PigAvatar id={p.pig_id||0} size={big?56:44}/>
+                  </div>
+                  <div style={{background:big?"#12492f":"#0f3a2b",border:"1.5px solid "+medal[slot],borderRadius:8,padding:"5px 2px"}}>
+                    <div style={{fontSize:big?13:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
+                    <div style={{fontSize:big?13:12,fontWeight:700,color:"#f4d47a"}}>★ {(p.xp||0).toLocaleString()}</div>
+                  </div>
+                  <div style={{fontSize:10,color:medal[slot],marginTop:3}}>{L?"อันดับ ":"#"}{slot+1}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {rows&&(
+          <div style={{margin:"0 0 12px",background:"#0c3323",border:"1px solid #1c5a3f",borderRadius:12,padding:"10px 8px"}}>
+            <div style={{textAlign:"center",fontSize:11,color:"#d4af37",letterSpacing:1,marginBottom:8}}>🏆 {L?"ความสำเร็จระดับตำนาน":"Legend achievements"}</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7}}>
+              {[["👑",L?"เก็บ J♦":"J♦ Master",L?"1,000 ครั้ง":"1,000 times"],
+                ["♠️",L?"หนี Q♠":"Queen Hunter",L?"500 ครั้ง":"500 times"],
+                ["🎯",L?"สแลม":"Shoot the Moon",L?"100 ครั้ง":"100 times"],
+                ["🏆",L?"ตำนานหมู":"Pig Legend",L?"เล่น 10,000 เกม":"10,000 games"]].map((a,i)=>(
+                <div key={i} style={{textAlign:"center",background:"#0f3a2b",borderRadius:8,padding:"6px 3px"}}>
+                  <div style={{fontSize:17}}>{a[0]}</div>
+                  <div style={{fontSize:9,color:"#f4d47a",fontWeight:700,marginTop:2}}>{a[1]}</div>
+                  <div style={{fontSize:8,color:"#7a9b8c"}}>{a[2]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {rest.map((p,i)=>(
+          <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:"#0f3a2b",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#7a9b8c",width:18}}>{i+4}</span>
+            <PigAvatar id={p.pig_id||0} size={26}/>
+            <span style={{flex:1,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</span>
+            <span style={{fontSize:12,fontWeight:700,color:"#f4d47a"}}>★ {(p.xp||0).toLocaleString()}</span>
+          </div>
+        ))}
+
+        {prof&&myRank>=0&&(
+          <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,background:"#12492f",border:"1.5px solid #d4af37",borderRadius:10,padding:"9px 10px"}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#1a2e1a",background:"#d4af37",borderRadius:6,padding:"2px 6px"}}>{myRank+1}</span>
+            <PigAvatar id={prof.pig_id||0} size={28}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{prof.name||"—"} <span style={{color:"#7a9b8c",fontSize:10}}>({L?"คุณ":"You"})</span></div>
+              <div style={{fontSize:9,color:"#7a9b8c"}}>{levelInfo(prof.xp||0).name}</div>
+            </div>
+            <span style={{fontSize:13,fontWeight:700,color:"#f4d47a"}}>★ {(prof.xp||0).toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const [lang,setLang]=useState("th");
   const [cfg,setCfg]=useState(null);
   const [online,setOnline]=useState(false);
-  if(online)return <OnlineLobby lang={lang} setLang={setLang} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/>;
-  if(!cfg)return <Setup onStart={c=>setCfg(c)} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang}/>;
-  return <Game cfg={cfg} lang={lang} setLang={setLang}/>;
+  const [prof,setProf]=useState(profLocal());
+  const [showCode,setShowCode]=useState(false);
+  const [showHall,setShowHall]=useState(false);
+  const [newCode,setNewCode]=useState(false); // just-created → force-show popup once
+
+  // Create or load the profile on first mount
+  useEffect(()=>{
+    let live=true;
+    (async()=>{
+      const local=profLocal();
+      if(local&&local.code){
+        setProf(local);
+        try{const fresh=await profFetch(local.code);if(live&&fresh)setProf(fresh);}catch(e){}
+      }else{
+        try{const p=await profCreate("");if(live){setProf(p);setNewCode(true);setShowCode(true);}}catch(e){}
+      }
+    })();
+    return()=>{live=false;};
+  },[]);
+
+  async function commitStats(xpAdd,deltas){
+    const p=profLocal();if(!p||!p.code)return;
+    const updated=await profCommit(p.code,xpAdd,deltas);
+    if(updated)setProf(updated);
+  }
+  async function doRename(name){
+    const p=profLocal();if(!p||!p.code)return;
+    const updated=await profRename(p.code,name);
+    if(updated)setProf(updated);
+  }
+  function doRestore(p){setProf(p);}
+  async function doSetPig(pigId){
+    const p=profLocal();if(!p||!p.code)return;
+    const updated=await profSetPig(p.code,pigId);
+    if(updated)setProf(updated);
+  }
+
+  const codeModal=showCode?<CodeModal prof={prof} lang={lang} onClose={()=>{setShowCode(false);setNewCode(false);}} onRestore={doRestore} onRename={doRename} onSetPig={doSetPig}/>:null;
+
+  if(showHall)return <React.Fragment>{codeModal}<HallOfFame prof={prof} lang={lang} onBack={()=>setShowHall(false)}/></React.Fragment>;
+  if(online)return <React.Fragment>{codeModal}<OnlineLobby lang={lang} setLang={setLang} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/></React.Fragment>;
+  if(!cfg)return <React.Fragment>{codeModal}<Setup onStart={c=>setCfg(c)} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)}/></React.Fragment>;
+  return <React.Fragment>{codeModal}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats}/></React.Fragment>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
