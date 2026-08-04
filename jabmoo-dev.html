@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0721.8-dev";
+  var VER="v0722.1-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -534,8 +534,10 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       }
     }
 
-    // 10♣: give away if we're not worst
-    if(!iAmWorst){
+    // 10♣: give away if we're not worst — but NEVER while we hold losses (pen ≤ −100):
+    // leading it lets everyone duck and the ×2 comes straight back to double our damage.
+    // A loss-holder's escape is shedding it UNDER someone else's club trick instead.
+    if(!iAmWorst&&!iHoldLosses){
       const tc10=vld.find(c=>c.suit==="♣"&&c.rank==="10");
       if(tc10)return tc10;
     }
@@ -902,7 +904,7 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       const stuckRisk=iAmDeepNeg||escapeClubs<=2||clubsGone>=7;
       // SLAM GUARD: never shed 10♣ into a trick won by a slam-threat player (≥10 hearts piled)
       const wHeartsC=(cwIdx>=0&&allWon&&allWon[cwIdx]?allWon[cwIdx]:[]).filter(c=>c.suit==="♥").length;
-      if((goodTarget||stuckRisk)&&wHeartsC<10)return has10C;
+      if((goodTarget||stuckRisk||iHoldLosses)&&wHeartsC<10)return has10C;
       // else: hold 10♣, fall through to normal club play
     }
     // Try to shed J♣ safely
@@ -1119,6 +1121,15 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
     if(!jdGone){
       const lows=vld.filter(c=>c.rank!=="Q"&&c.rank!=="K"&&c.rank!=="A");
       if(lows.length>0)vld=lows;
+    }
+  }
+  // HARD RULE: a loss-holder (pen ≤ −100 piled) never LEADS 10♣ — ducking opponents
+  // send the ×2 straight back to double the damage.
+  if(!tc.length&&vld.length>1){
+    const myPen=(allWon&&allWon[myIdx]?allWon[myIdx]:[]).reduce((t,c)=>t+Math.min(0,cSc(c)),0);
+    if(myPen<=-100){
+      const pr=vld.filter(c=>!(c.suit==="♣"&&c.rank==="10"));
+      if(pr.length)vld=pr;
     }
   }
   // HARD RULE: never gift 10♣ (×2) or J♦ (+100) as a losing card into a trick
@@ -1465,6 +1476,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
                 </div>
               ))}
             </div>
+            {(prof.quits||0)>0&&<div style={{marginTop:6,fontSize:10,color:"#fca5a5",textAlign:"center"}}>🏃 {L?"หนีเกม":"quit"} {prof.quits} {L?"ครั้ง":"times"}</div>}
           </div>
         );})()}
 
@@ -1741,16 +1753,16 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail,corner}
   );
 }
 
-function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome}){
+function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume}){
   const mySeat=net?net.mySeat:0;
   const isClient=!!(net&&net.role==="client");
   const isHost=!!(net&&net.role==="host");
-  const sRef=useRef(isClient?{phase:"waiting",hands:null}:mkRound(0,[0,0,0,0],1));
+  const sRef=useRef(isClient?{phase:"waiting",hands:null}:((!net&&resume&&resume.S)||mkRound(0,[0,0,0,0],1)));
   const [showHist,setShowHist]=useState(false);
   const [copyMsg,setCopyMsg]=useState(false);
   const [aiThinking,setAiThinking]=useState(false);
-  const histRef=useRef([]);
-  const gameLogRef=useRef([]); // full move log for export
+  const histRef=useRef((!net&&resume&&resume.hist)||[]);
+  const gameLogRef=useRef((!net&&resume&&resume.gameLog)||[]); // full move log for export
   const [,fr]=useState(0);
   const rd=()=>fr(x=>x+1);
   const tmr=useRef(null);
@@ -1758,8 +1770,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome}){
   function ap(a){sRef.current=gReduce(sRef.current,a);rd();}
 
   // ── STATS: commit XP + skill stats once per finished game (roundSummary or gameOver) ──
-  const statFired=useRef({});
-  const wasOverStat=useRef(false);
+  const statFired=useRef((!net&&resume&&resume.statFired)||{});
+  const wasOverStat=useRef(!!(!net&&resume&&resume.wasOver));
   useEffect(()=>{
     const Sr=sRef.current;if(!Sr||!onGameStats)return;
     if(wasOverStat.current&&!Sr.gameOver){wasOverStat.current=false;statFired.current={};}
@@ -1953,8 +1965,23 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome}){
     }
   });
 
-  const lastShuffleGame=useRef(-1);
-  const lastRecordedGame=useRef(-1);
+  const lastShuffleGame=useRef((!net&&resume&&typeof resume.lastShuf==="number")?resume.lastShuf:-1);
+  const lastRecordedGame=useRef((!net&&resume&&typeof resume.lastRec==="number")?resume.lastRec:-1);
+
+  // ── SAVE GAME (offline only): persist the full state on every action, so closing
+  // the app can never reroll a bad deal — reopening resumes the exact same game.
+  useEffect(()=>{
+    if(net)return;
+    const Sr=sRef.current;
+    if(!Sr||!Sr.hands)return;
+    try{
+      if(Sr.gameOver){localStorage.removeItem("jm-savegame-v1");return;}
+      localStorage.setItem("jm-savegame-v1",JSON.stringify({v:1,at:Date.now(),cfg,
+        S:Sr,hist:histRef.current,gameLog:gameLogRef.current,
+        lastRec:lastRecordedGame.current,lastShuf:lastShuffleGame.current,
+        statFired:statFired.current,wasOver:wasOverStat.current}));
+    }catch(e){}
+  });
 
   function humanPlay(){
     const S=sRef.current;
@@ -2733,7 +2760,7 @@ const CODE_ALPHABET="ACDEFGHJKLMNPQRTUVWXY34679"; // no confusable 0/O/1/I/2/Z/5
 function genCode(){let s="";for(let i=0;i<4;i++)s+=CODE_ALPHABET[Math.floor(Math.random()*CODE_ALPHABET.length)];return s;}
 function profLocal(){try{return JSON.parse(localStorage.getItem(PROF_KEY));}catch(e){return null;}}
 function profSaveLocal(p){try{localStorage.setItem(PROF_KEY,JSON.stringify(p));}catch(e){}}
-const BLANK_STATS={xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0,superslams:0,pig_id:0};
+const BLANK_STATS={xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0,superslams:0,quits:0,pig_id:0};
 
 // Create a brand-new player row with a unique code (retries on collision)
 async function profCreate(name){
@@ -2791,6 +2818,7 @@ async function profCommit(code,xpAdd,deltas){
     qs_seen:(data.qs_seen||0)+(deltas.qs_seen||0),
     slams:(data.slams||0)+(deltas.slams||0),
     superslams:(data.superslams||0)+(deltas.superslams||0),
+    quits:(data.quits||0)+(deltas.quits||0),
     updated_at:new Date().toISOString()
   };
   const {data:d2,error:e2}=await c.from("players").update(upd).eq("code",code).select().maybeSingle();
@@ -3183,6 +3211,27 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
 
 
 // ── ROOT ───────────────────────────────────────────────────────
+function ResumeModal({save,lang,onResume,onSurrender}){
+  const L=lang==="th";
+  const S=(save&&save.S)||{};
+  const g=S.gameNum||1, total=(save&&save.cfg&&save.cfg.numGames)||8;
+  const [busy,setBusy]=useState(false);
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#0b3d2e",border:"2px solid rgba(212,175,55,0.7)",borderRadius:16,padding:"1.3rem 1.1rem",width:"100%",maxWidth:330,color:"#fff",textAlign:"center"}}>
+        <div style={{fontSize:32,marginBottom:6}}>🃏</div>
+        <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:4}}>{L?"มีเกมค้างอยู่":"Unfinished game"}</div>
+        <div style={{fontSize:12,color:"#a7f3d0",marginBottom:12}}>{L?("เกมที่ "+g+"/"+total+" — เล่นต่อจากตาเดิมได้เลย"):("Game "+g+"/"+total+" — continue where you left off")}</div>
+        <button onClick={onResume} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:"#d4af37",color:"#1a2e1a",fontWeight:800,fontSize:15,cursor:"pointer",marginBottom:10}}>▶️ {L?"เล่นต่อ":"Resume"}</button>
+        <div style={{fontSize:11,color:"#fca5a5",background:"rgba(0,0,0,0.3)",borderRadius:8,padding:"7px 9px",marginBottom:8,lineHeight:1.55,textAlign:"left"}}>
+          {L?"⚠️ ถ้ายอมแพ้: นับเป็นเกมที่จบอันดับสุดท้าย — ไม่ได้แต้มสะสม, % เก็บ J♦ และ % หนี Q♠ ถูกนับเป็นพลาด, และ +1 สถิติหนีเกม 🏃":"⚠️ Surrendering counts as a last-place finish — 0 XP, J♦/Q♠ rates take a miss, and your quit count 🏃 goes up."}
+        </div>
+        <button disabled={busy} onClick={async()=>{setBusy(true);try{await onSurrender();}catch(e){}setBusy(false);}} style={{width:"100%",padding:"9px",borderRadius:10,border:"1.5px solid #b91c1c",background:"transparent",color:"#fca5a5",fontWeight:700,fontSize:13,cursor:"pointer"}}>🏳️ {busy?"...":(L?"ยอมแพ้":"Surrender")}</button>
+      </div>
+    </div>
+  );
+}
+
 function NamePrompt({lang,onSave}){
   const L=lang==="th";
   const [v,setV]=useState("");
@@ -3375,6 +3424,8 @@ function App(){
   const [prof,setProf]=useState(profLocal());
   const [showCode,setShowCode]=useState(false);
   const [showHall,setShowHall]=useState(false);
+  const [savedGame,setSavedGame]=useState(()=>{try{const dd=JSON.parse(localStorage.getItem("jm-savegame-v1"));return (dd&&dd.v===1&&dd.S&&dd.cfg)?dd:null;}catch(e){return null;}});
+  const [resumeGame,setResumeGame]=useState(null);
   const [newCode,setNewCode]=useState(false); // just-created → force-show popup once
 
   // Create or load the profile on first mount
@@ -3412,12 +3463,18 @@ function App(){
 
   const needName=!!(prof&&prof.code)&&!(prof.name&&prof.name.trim())&&!showCode;
   const namePrompt=needName?<NamePrompt lang={lang} onSave={doRename}/>:null;
+  async function doSurrender(){
+    try{localStorage.removeItem("jm-savegame-v1");}catch(e){}
+    setSavedGame(null);
+    await commitStats(0,{games:1,jd_won:0,jd_seen:1,qs_dodged:0,qs_seen:1,slams:0,superslams:0,quits:1});
+  }
+  const resumeModal=(savedGame&&!cfg&&!online)?<ResumeModal save={savedGame} lang={lang} onResume={()=>{setResumeGame(savedGame);setCfg(savedGame.cfg);setSavedGame(null);}} onSurrender={doSurrender}/>:null;
   const codeModal=showCode?<CodeModal prof={prof} lang={lang} onClose={()=>{setShowCode(false);setNewCode(false);}} onRestore={doRestore} onRename={doRename} onSetPig={doSetPig}/>:null;
 
   if(showHall)return <React.Fragment>{codeModal}{namePrompt}<HallOfFame prof={prof} lang={lang} onBack={()=>setShowHall(false)}/></React.Fragment>;
   if(online)return <React.Fragment>{codeModal}{namePrompt}<OnlineLobby lang={lang} setLang={setLang} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/></React.Fragment>;
-  if(!cfg)return <React.Fragment>{codeModal}{namePrompt}<Setup onStart={c=>setCfg(c)} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)}/></React.Fragment>;
-  return <React.Fragment>{codeModal}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>setCfg(null)}/></React.Fragment>;
+  if(!cfg)return <React.Fragment>{codeModal}{namePrompt}{resumeModal}<Setup onStart={c=>{setResumeGame(null);setCfg(c);}} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)}/></React.Fragment>;
+  return <React.Fragment>{codeModal}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>{setCfg(null);setResumeGame(null);try{localStorage.removeItem("jm-savegame-v1");}catch(e){}}} resume={resumeGame}/></React.Fragment>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
