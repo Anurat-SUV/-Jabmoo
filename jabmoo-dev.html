@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0722.3-dev";
+  var VER="v0722.4-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3362,7 +3362,7 @@ function HallOfFame({prof,lang,onBack}){
                   <div style={{background:big?"#12492f":"#0f3a2b",border:"1.5px solid "+medal[slot],borderRadius:8,padding:"5px 2px"}}>
                     <div style={{fontSize:big?13:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
                     <div style={{fontSize:big?13:12,fontWeight:700,color:"#f4d47a"}}>★ {(p.xp||0).toLocaleString()}</div>
-                    <div style={{fontSize:8,color:"#7a9b8c",marginTop:1}}>♦️{pct(p.jd_won,p.jd_seen)}% ♠️{pct(p.qs_dodged,p.qs_seen)}% 🎯{(p.slams||0)+(p.superslams||0)}</div>
+                    <div style={{fontSize:8,color:"#7a9b8c",marginTop:1}}>♦️{pct(p.jd_won,p.jd_seen)}% ♠️{pct(p.qs_dodged,p.qs_seen)}% 🎯{p.slams||0} ⭐{p.superslams||0}</div>
                   </div>
                   <div style={{fontSize:10,color:medal[slot],marginTop:3}}>{L?"อันดับ ":"#"}{slot+1}</div>
                 </div>
@@ -3398,7 +3398,8 @@ function HallOfFame({prof,lang,onBack}){
               <div style={{fontSize:9,color:"#7a9b8c",display:"flex",gap:8,marginTop:1}}>
                 <span>♦️{pct(p.jd_won,p.jd_seen)}%</span>
                 <span>♠️{pct(p.qs_dodged,p.qs_seen)}%</span>
-                <span>🎯{(p.slams||0)+(p.superslams||0)}</span>
+                <span>🎯{p.slams||0}</span>
+                <span>⭐{p.superslams||0}</span>
               </div>
             </div>
             <span style={{fontSize:12,fontWeight:700,color:"#f4d47a",whiteSpace:"nowrap"}}>★ {(p.xp||0).toLocaleString()}</span>
