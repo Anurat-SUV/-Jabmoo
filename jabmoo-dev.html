@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0722.7-dev";
+  var VER="v0722.8-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2814,7 +2814,8 @@ function xpForGame(myScore,allScores,myWon,matchDone,matchGames){
 // Push accumulated deltas to Supabase (read-modify-write; best-effort)
 async function profCommit(code,xpAdd,deltas){
   const c=await profClient();
-  const {data,error}=await c.from("players").select("*").eq("code",code).maybeSingle();
+  let {data,error}=await c.from("players").select("*").eq("code",code).maybeSingle();
+  if(!error&&!data){data=await profReviveRow(c,code,null);} // row deleted → recreate from device cache, then apply this game's deltas
   if(error||!data)return null;
   const upd={
     xp:(data.xp||0)+xpAdd,
@@ -2835,15 +2836,29 @@ async function profCommit(code,xpAdd,deltas){
   if(d2)profSaveLocal(d2);
   return d2;
 }
+// Row vanished from DB (deleted via admin/Table Editor) but device still has the
+// cached profile → recreate the row from local cache so the player keeps playing.
+async function profReviveRow(c,code,extra){
+  const local=profLocal();
+  if(!local||local.code!==code)return null;
+  const row=Object.assign({},BLANK_STATS,local,extra||{},{code,updated_at:new Date().toISOString()});
+  delete row.created_at;
+  const {data,error}=await c.from("players").insert(row).select().maybeSingle();
+  if(error)return null;
+  return data||row;
+}
+
 async function profRename(code,name){
   const c=await profClient();
   const {data,error}=await c.from("players").update({name,updated_at:new Date().toISOString()}).eq("code",code).select().maybeSingle();
+  if(!error&&!data){const r=await profReviveRow(c,code,{name});if(r){profSaveLocal(r);return r;}}
   if(!error&&data)profSaveLocal(data);
   return data;
 }
 async function profSetPig(code,pigId){
   const c=await profClient();
   const {data,error}=await c.from("players").update({pig_id:pigId,updated_at:new Date().toISOString()}).eq("code",code).select().maybeSingle();
+  if(!error&&!data){const r=await profReviveRow(c,code,{pig_id:pigId});if(r){profSaveLocal(r);return r;}}
   if(!error&&data)profSaveLocal(data);
   return data;
 }
