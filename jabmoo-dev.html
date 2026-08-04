@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0722.6-dev";
+  var VER="v0722.7-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2850,7 +2850,7 @@ async function profSetPig(code,pigId){
 async function profLeaderboard(limit){
   const c=await profClient();
   const {data,error}=await c.from("players").select("code,name,xp,games,wins,rank_sum,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id").order("xp",{ascending:false}).limit(limit||100);
-  if(error)return [];
+  if(error)throw new Error(error.message||"query failed"); // surface DB errors — never show an empty hall silently
   return data||[];
 }
 
@@ -3342,7 +3342,7 @@ function HallOfFame({prof,lang,onBack}){
   const [tab,setTab]=useState("xp");
   useEffect(()=>{
     let live=true;
-    profLeaderboard(100).then(r=>{if(live)setRows(r);}).catch(()=>{if(live)setErr(true);});
+    profLeaderboard(100).then(r=>{if(live)setRows(r);}).catch(e=>{if(live)setErr((e&&e.message)||true);});
     return()=>{live=false;};
   },[]);
   const medal=["#d4af37","#c0c0c0","#cd7f32"];
@@ -3372,7 +3372,10 @@ function HallOfFame({prof,lang,onBack}){
         </div>
 
         {!rows&&!err&&<div style={{textAlign:"center",padding:"3rem 0",color:"#7a9b8c"}}>{L?"กำลังโหลด...":"Loading..."}</div>}
-        {err&&<div style={{textAlign:"center",padding:"3rem 0",color:"#fca5a5"}}>{L?"เชื่อมต่อไม่ได้":"Connection error"}</div>}
+        {err&&<div style={{textAlign:"center",padding:"2.5rem 12px",color:"#fca5a5",fontSize:12,lineHeight:1.6}}>
+          ⚠️ {L?"โหลดตารางไม่สำเร็จ":"Failed to load"}{typeof err==="string"?<span style={{display:"block",fontSize:10,color:"#7a9b8c",marginTop:4}}>{err}</span>:null}
+          <span style={{display:"block",fontSize:10,color:"#7a9b8c",marginTop:4}}>{L?"ถ้าข้อความบอกว่า column ไม่มี → รัน SQL เพิ่มคอลัมน์ pig_id / wins / rank_sum":"If a column is missing, run the ALTER TABLE SQL"}</span>
+        </div>}
 
         {tab==="xp"&&rows&&rows.length>0&&(
           <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"10px 0 16px"}}>
