@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0722.1";
+  var VER="v0722.2";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1778,7 +1778,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume}){
     const matchDone=!!over;
     const xpAdd=xpForGame(rs[me],rs,myWon,matchDone,cfg.numGames||8);
     const deltas=statDeltas(myWon,rs[me],rs,superSlam);
-    onGameStats(xpAdd,deltas);
+    // If the commit fails (offline / DB error), clear the marker so it retries
+    // instead of silently losing the game's XP forever.
+    const r=onGameStats(xpAdd,deltas);
+    if(r&&r.then)r.then(ok=>{if(ok===false)delete statFired.current[key];}).catch(()=>{delete statFired.current[key];});
   });
 
   useEffect(()=>{
@@ -3432,9 +3435,10 @@ function App(){
   },[]);
 
   async function commitStats(xpAdd,deltas){
-    const p=profLocal();if(!p||!p.code)return;
+    const p=profLocal();if(!p||!p.code)return false;
     const updated=await profCommit(p.code,xpAdd,deltas);
     if(updated)setProf(updated);
+    return !!updated;
   }
   async function doRename(name){
     const p=profLocal();if(!p||!p.code)return;

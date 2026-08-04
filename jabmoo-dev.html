@@ -17,7 +17,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <meta name="theme-color" content="#0b1f12">
-<link rel="manifest" href="manifest-dev.json">
+<link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0722.1-dev";
+  var VER="v0722.2-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1790,7 +1790,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume}){
     const matchDone=!!over;
     const xpAdd=xpForGame(rs[me],rs,myWon,matchDone,cfg.numGames||8);
     const deltas=statDeltas(myWon,rs[me],rs,superSlam);
-    onGameStats(xpAdd,deltas);
+    // If the commit fails (offline / DB error), clear the marker so it retries
+    // instead of silently losing the game's XP forever.
+    const r=onGameStats(xpAdd,deltas);
+    if(r&&r.then)r.then(ok=>{if(ok===false)delete statFired.current[key];}).catch(()=>{delete statFired.current[key];});
   });
 
   useEffect(()=>{
@@ -3444,10 +3447,11 @@ function App(){
   },[]);
 
   async function commitStats(xpAdd,deltas){
-    if(window.__JM_DEV)return; // dev copy: never write XP/stats to Supabase
-    const p=profLocal();if(!p||!p.code)return;
+    if(window.__JM_DEV)return true; // dev copy: never write XP/stats to Supabase
+    const p=profLocal();if(!p||!p.code)return false;
     const updated=await profCommit(p.code,xpAdd,deltas);
     if(updated)setProf(updated);
+    return !!updated;
   }
   async function doRename(name){
     const p=profLocal();if(!p||!p.code)return;
