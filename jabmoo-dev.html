@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0722.4-dev";
+  var VER="v0722.5-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2805,7 +2805,7 @@ function xpForGame(myScore,allScores,myWon,matchDone,matchGames){
   if(!myWon.some(c=>c.suit==="♠"&&c.rank==="Q"))xp+=5;
   const hearts=myWon.filter(c=>c.suit==="♥").length;
   if(hearts>=13)xp+=(myScore===788?150:60);
-  if(matchDone)xp+=30;
+  if(matchDone)xp+=(matchGames>=8?30:matchGames>=4?15:0); // scaled: match-completion bonus rewards long sessions (1-game matches earn none)
   return xp;
 }
 // Push accumulated deltas to Supabase (read-modify-write; best-effort)
