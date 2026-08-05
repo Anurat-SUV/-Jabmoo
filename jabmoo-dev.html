@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0722.8-dev";
+  var VER="v0723.1-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -133,6 +133,7 @@ document.addEventListener('click',unlockAudio,{once:true});
 // ── FEEL: seat colors, haptics, extra sounds, timer/emote constants ──
 const SEATCOL=["#3b82f6","#ef4444","#22c55e","#eab308"];
 const TURN_SECS=25;
+const SOLO_TIMER_OFF=true; // solo vs 3 bots: no countdown (A: may re-enable later — set to false)
 const EMOTES=["😂","😭","🐷","👍","🔥","😱","🤔","🎉"];
 function hap(p){try{if(navigator.vibrate)navigator.vibrate(p);}catch(e){}}
 function playCardTick(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=520;const t=ctx.currentTime;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.10,t+0.005);g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.1);}catch(e){}}
@@ -2110,6 +2111,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume}){
   },[]);
 
   // ── TURN TIMER (anti-AFK) ─────────────────────────────────────
+  // Solo vs 3 bots (offline): bots wait forever, so the countdown only pressures
+  // the human — A wants it off (can step away mid-game). Online keeps the timer.
+  const soloVsBots=!net&&cfg&&cfg.players&&cfg.players.slice(1).every(p=>p.isBot);
+  const timerOff=SOLO_TIMER_OFF&&soloVsBots;
   const [turnLeft,setTurnLeft]=useState(TURN_SECS);
   const turnLeftRef=useRef(TURN_SECS);
   const turnKey=useRef("");
@@ -2125,6 +2130,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume}){
     else ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
   }
   useEffect(()=>{
+    if(timerOff)return; // no countdown in solo-vs-bots games
     const iv=setInterval(()=>{
       const S=sRef.current;
       if(!S||S.phase!=="playing")return;
@@ -2246,7 +2252,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume}){
             return <div key={e.id} style={{position:"absolute",...pos,fontSize:46,filter:"drop-shadow(0 2px 6px rgba(0,0,0,0.45))"}}>{e.emoji}</div>;
           })}
         </div>
-        {S.phase==="playing"&&S.curIdx===0&&turnLeft<=15&&(
+        {!timerOff&&S.phase==="playing"&&S.curIdx===0&&turnLeft<=15&&(
           <div style={{position:"fixed",top:"calc(8px + env(safe-area-inset-top))",left:"50%",transform:"translateX(-50%)",zIndex:260,background:turnLeft<=5?"#dc2626":"rgba(15,20,40,0.9)",color:"#fff",borderRadius:20,padding:"3px 13px",fontSize:13,fontWeight:800,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>⏱ {turnLeft}</div>
         )}
       </React.Fragment>
@@ -2764,7 +2770,7 @@ const CODE_ALPHABET="ACDEFGHJKLMNPQRTUVWXY34679"; // no confusable 0/O/1/I/2/Z/5
 function genCode(){let s="";for(let i=0;i<4;i++)s+=CODE_ALPHABET[Math.floor(Math.random()*CODE_ALPHABET.length)];return s;}
 function profLocal(){try{return JSON.parse(localStorage.getItem(PROF_KEY));}catch(e){return null;}}
 function profSaveLocal(p){try{localStorage.setItem(PROF_KEY,JSON.stringify(p));}catch(e){}}
-const BLANK_STATS={xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0,superslams:0,quits:0,wins:0,rank_sum:0,pig_id:0};
+const BLANK_STATS={xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0,superslams:0,quits:0,wins:0,rank_sum:0,rk_games:0,pig_id:0};
 
 // Create a brand-new player row with a unique code (retries on collision)
 async function profCreate(name){
@@ -2788,10 +2794,11 @@ async function profFetch(code){
 }
 // Compute per-game stat deltas from a finished game for the given seat
 function statDeltas(myWon,myScore,allScores,didSuperSlam){
-  const d={games:1,jd_won:0,jd_seen:1,qs_dodged:0,qs_seen:1,slams:0,superslams:0,wins:0,rank_sum:0};
+  const d={games:1,jd_won:0,jd_seen:1,qs_dodged:0,qs_seen:1,slams:0,superslams:0,wins:0,rank_sum:0,rk_games:0};
   const rank=allScores.filter(sc=>sc>myScore).length+1;
   d.wins=rank===1?1:0;
   d.rank_sum=rank;
+  d.rk_games=1; // games counted in the skill era — the ONLY valid denominator for avg rank / win%
   if(myWon.some(c=>c.suit==="♦"&&c.rank==="J"))d.jd_won=1;
   if(!myWon.some(c=>c.suit==="♠"&&c.rank==="Q"))d.qs_dodged=1; // Q♠ went elsewhere (or nobody = still dodged)
   const heartsAll=myWon.filter(c=>c.suit==="♥").length;
@@ -2829,6 +2836,7 @@ async function profCommit(code,xpAdd,deltas){
     quits:(data.quits||0)+(deltas.quits||0),
     wins:(data.wins||0)+(deltas.wins||0),
     rank_sum:(data.rank_sum||0)+(deltas.rank_sum||0),
+    rk_games:(data.rk_games||0)+(deltas.rk_games||0),
     updated_at:new Date().toISOString()
   };
   const {data:d2,error:e2}=await c.from("players").update(upd).eq("code",code).select().maybeSingle();
@@ -2864,7 +2872,7 @@ async function profSetPig(code,pigId){
 }
 async function profLeaderboard(limit){
   const c=await profClient();
-  const {data,error}=await c.from("players").select("code,name,xp,games,wins,rank_sum,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id").order("xp",{ascending:false}).limit(limit||100);
+  const {data,error}=await c.from("players").select("code,name,xp,games,wins,rank_sum,rk_games,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id").order("xp",{ascending:false}).limit(limit||100);
   if(error)throw new Error(error.message||"query failed"); // surface DB errors — never show an empty hall silently
   return data||[];
 }
@@ -3365,7 +3373,7 @@ function HallOfFame({prof,lang,onBack}){
   const rest=rows?rows.slice(3,20):[];
   const myRank=rows&&prof?rows.findIndex(r=>r.code===prof.code):-1;
   const SKILL_MIN=30;
-  const skillAll=rows?rows.filter(r=>(r.games||0)>=SKILL_MIN).map(r=>Object.assign({},r,{avg:(r.rank_sum||0)/(r.games||1)})).sort((a,b)=>a.avg-b.avg):[];
+  const skillAll=rows?rows.filter(r=>(r.rk_games||0)>=SKILL_MIN).map(r=>Object.assign({},r,{avg:(r.rank_sum||0)/(r.rk_games||1)})).sort((a,b)=>a.avg-b.avg):[];
   const skillRows=skillAll.slice(0,20);
   const mySkillIdx=prof?skillAll.findIndex(r=>r.code===prof.code):-1;
   const star=c=>React.createElement("span",{style:{color:"#f4d47a"}},"★");
@@ -3458,7 +3466,7 @@ function HallOfFame({prof,lang,onBack}){
                 <PigAvatar id={p.pig_id||0} size={26}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
-                  <div style={{fontSize:9,color:"#7a9b8c",marginTop:1}}>{L?"ชนะ":"win"} {pct(p.wins,p.games)}% · {p.games} {L?"เกม":"games"}</div>
+                  <div style={{fontSize:9,color:"#7a9b8c",marginTop:1}}>{L?"ชนะ":"win"} {pct(p.wins,p.rk_games)}% · {p.rk_games} {L?"เกม":"games"}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>{p.avg.toFixed(2)}</div>
@@ -3471,9 +3479,9 @@ function HallOfFame({prof,lang,onBack}){
                 <PigAvatar id={prof.pig_id||0} size={28}/>
                 <div style={{flex:1}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{prof.name||"—"} <span style={{color:"#7a9b8c",fontSize:10}}>({L?"คุณ":"You"})</span></div>
-                  <div style={{fontSize:9,color:"#7a9b8c"}}>{(prof.games||0)>=SKILL_MIN?((L?"ชนะ ":"win ")+pct(prof.wins,prof.games)+"% · "+(mySkillIdx>=0?(L?"อันดับ ":"#")+(mySkillIdx+1):"")):(L?("อีก "+(SKILL_MIN-(prof.games||0))+" เกมถึงเกณฑ์"):((SKILL_MIN-(prof.games||0))+" games to qualify"))}</div>
+                  <div style={{fontSize:9,color:"#7a9b8c"}}>{(prof.rk_games||0)>=SKILL_MIN?((L?"ชนะ ":"win ")+pct(prof.wins,prof.rk_games)+"% · "+(mySkillIdx>=0?(L?"อันดับ ":"#")+(mySkillIdx+1):"")):(L?("อีก "+(SKILL_MIN-(prof.rk_games||0))+" เกมถึงเกณฑ์"):((SKILL_MIN-(prof.rk_games||0))+" games to qualify"))}</div>
                 </div>
-                {(prof.games||0)>=SKILL_MIN&&<span style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>{((prof.rank_sum||0)/(prof.games||1)).toFixed(2)}</span>}
+                {(prof.rk_games||0)>=SKILL_MIN&&<span style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>{((prof.rank_sum||0)/(prof.rk_games||1)).toFixed(2)}</span>}
               </div>
             )}
           </React.Fragment>
@@ -3548,7 +3556,7 @@ function App(){
   async function doSurrender(){
     try{localStorage.removeItem("jm-savegame-v1");}catch(e){}
     setSavedGame(null);
-    await commitStats(0,{games:1,jd_won:0,jd_seen:1,qs_dodged:0,qs_seen:1,slams:0,superslams:0,quits:1,wins:0,rank_sum:4});
+    await commitStats(0,{games:1,jd_won:0,jd_seen:1,qs_dodged:0,qs_seen:1,slams:0,superslams:0,quits:1,wins:0,rank_sum:4,rk_games:1});
   }
   const resumeModal=(savedGame&&!cfg&&!online)?<ResumeModal save={savedGame} lang={lang} onResume={()=>{setResumeGame(savedGame);setCfg(savedGame.cfg);setSavedGame(null);}} onSurrender={doSurrender}/>:null;
   const codeModal=showCode?<CodeModal prof={prof} lang={lang} onClose={()=>{setShowCode(false);setNewCode(false);}} onRestore={doRestore} onRename={doRename} onSetPig={doSetPig}/>:null;

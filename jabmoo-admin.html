@@ -108,7 +108,7 @@ function Detail({p,onClose,onChanged}){
   }
   function resetStats(){
     if(!confirm("รีเซ็ตสถิติทั้งหมดของ "+(p.name||p.code)+" เป็น 0? (รหัสและชื่อคงเดิม)"))return;
-    run("reset",()=>upd({xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0,superslams:0,quits:0,wins:0,rank_sum:0}));
+    run("reset",()=>upd({xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0,superslams:0,quits:0,wins:0,rank_sum:0,rk_games:0}));
   }
   function del(){
     if(!confirm("ลบผู้เล่น "+(p.name||"ไม่มีชื่อ")+" ("+p.code+") ถาวร?"))return;
@@ -122,8 +122,8 @@ function Detail({p,onClose,onChanged}){
   }
   const rows=[
     ["Level","Lv."+lvOf(p.xp||0)],["XP",fmt(p.xp)],["เกม",fmt(p.games)],
-    ["ชนะ",fmt(p.wins)+" ("+pct(p.wins,p.games)+"%)"],
-    ["อันดับเฉลี่ย",(p.games?((p.rank_sum||0)/p.games).toFixed(2):"-")],
+    ["ชนะ",fmt(p.wins)+" ("+pct(p.wins,p.rk_games)+"%)"],
+    ["อันดับเฉลี่ย",(p.rk_games?((p.rank_sum||0)/p.rk_games).toFixed(2):"-")+(p.rk_games?" ("+fmt(p.rk_games)+"เกม)":"")],
     ["เก็บ J♦",pct(p.jd_won,p.jd_seen)+"% ("+fmt(p.jd_won)+"/"+fmt(p.jd_seen)+")"],
     ["หนี Q♠",pct(p.qs_dodged,p.qs_seen)+"% ("+fmt(p.qs_dodged)+"/"+fmt(p.qs_seen)+")"],
     ["Slam / Super",fmt(p.slams)+" / "+fmt(p.superslams)],
@@ -184,8 +184,8 @@ function Dash(){
     const {k,d}=sort;
     v=[...v].sort((a,b)=>{
       let av,bv;
-      if(k==="winp"){av=pct(a.wins,a.games);bv=pct(b.wins,b.games);}
-      else if(k==="avg"){av=a.games?(a.rank_sum||0)/a.games:99;bv=b.games?(b.rank_sum||0)/b.games:99;}
+      if(k==="winp"){av=pct(a.wins,a.rk_games);bv=pct(b.wins,b.rk_games);}
+      else if(k==="avg"){av=a.rk_games?(a.rank_sum||0)/a.rk_games:99;bv=b.rk_games?(b.rank_sum||0)/b.rk_games:99;}
       else if(k==="jd"){av=pct(a.jd_won,a.jd_seen);bv=pct(b.jd_won,b.jd_seen);}
       else if(k==="qs"){av=pct(a.qs_dodged,a.qs_seen);bv=pct(b.qs_dodged,b.qs_seen);}
       else if(k==="upd"){av=new Date(a.updated_at||0).getTime();bv=new Date(b.updated_at||0).getTime();}
@@ -236,8 +236,8 @@ function Dash(){
                 <td>{PIGS[(r.pig_id||0)%4]} {r.name||<span style={{color:"#7a9b8c"}}>—</span>} <span style={{color:"#5dcaa5",fontSize:10}}>Lv.{lvOf(r.xp||0)}</span></td>
                 <td style={{color:"#fde68a",fontWeight:700,letterSpacing:1}}>{r.code}</td>
                 <td>{fmt(r.xp)}</td><td>{fmt(r.games)}</td>
-                <td>{pct(r.wins,r.games)}%</td>
-                <td>{r.games?((r.rank_sum||0)/r.games).toFixed(2):"-"}</td>
+                <td>{pct(r.wins,r.rk_games)}%</td>
+                <td>{r.rk_games?((r.rank_sum||0)/r.rk_games).toFixed(2):"-"}</td>
                 <td>{pct(r.jd_won,r.jd_seen)}%</td><td>{pct(r.qs_dodged,r.qs_seen)}%</td>
                 <td>{fmt(r.slams)}</td><td>{fmt(r.superslams)}</td>
                 <td style={{color:(r.quits||0)>0?"#fca5a5":"inherit"}}>{fmt(r.quits)}</td>
