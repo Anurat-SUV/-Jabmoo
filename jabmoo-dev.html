@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0723.8-dev";
+  var VER="v0812.2-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -998,19 +998,22 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     // Rationale: winning no score card at all = -50. Taking a small heart pile
     // (penalty < 50) is BETTER than -50, and it blocks an opponent's slam.
     // Only do this if the trick penalty is small enough to be worth it.
-    if(someoneElseWinning&&myWonScoreCards===0){
-      // We haven't won any score card yet → we're heading for -50
-      // If this heart pile is cheaper than 50, grab it (play lowest card that wins)
-      const futureCost=trickHeartSum+ (heartsInTrick.length<4? 5:0); // approx
-      if(trickHeartSum<50){
-        // play the lowest heart that still beats the current winner
-        const higher=vld.filter(c=>c.suit==="♥"&&RO[c.rank]>RO[winnerCard.rank]);
-        if(higher.length){
-          // but keep our smallest hearts (2,3,4) as safe guards if we have bigger options
-          const nonGuard=higher.filter(c=>RO[c.rank]>4);
-          const pick=(nonGuard.length?nonGuard:higher).reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
-          return pick;
-        }
+    if(someoneElseWinning&&myWonScoreCards===0&&!slamThreat&&!criticalSlam){
+      // EARLY HEART CONTEST (v0812.2): we hold no score card yet → heading for -50.
+      // Grab a CHEAP heart trick with a MID heart ONLY (5-10): J+ are slam-breakers
+      // (never burn — the old rule here could torch A♥), 2-4 stay as duck guards.
+      // Cost counts the WHOLE trick net (a dumped Q♠ makes it expensive; a dumped
+      // J♦ makes it a prize). Skip when a yet-to-act player is void in ♥ — they
+      // could dump Q♠/big hearts onto our contested trick. Under an active slam
+      // threat the dedicated threat defense below owns the decision (it may break
+      // with J+, which we forbid here).
+      const trickCost=-tc.reduce((s,t)=>s+cSc(t.card),0);
+      const played=new Set(tc.map(t=>t.playerIdx));
+      let dumpRisk=false;
+      for(let i=1;i<4;i++){const s=(myIdx+i)%4;if(!played.has(s)&&voids[s]&&voids[s]["♥"])dumpRisk=true;}
+      if(trickCost<50&&!dumpRisk){
+        const mids=vld.filter(c=>c.suit==="♥"&&RO[c.rank]>RO[winnerCard.rank]&&RO[c.rank]>=5&&RO[c.rank]<=10);
+        if(mids.length)return mids.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
       }
     }
 
@@ -1238,6 +1241,38 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
       let enemySp=0;for(const r of RANKS){if(!seenSp.has(r+"♠"))enemySp++;}
       const canHideForever=escortsAfter>=enemySp;
       if(critSafe&&!canHideForever)vld=[qEx];
+    }
+  }
+  // EARLY HEART CONTEST (force, v0812.2): slam-threat detection needs ≥5 single-
+  // owned captured hearts, so the FIRST heart tricks had ZERO defense — a mere 7♥
+  // lead swept every time (A's G1 T1 log: bots ducked 5/3/4 under a 7). While
+  // captured hearts are still single-owned (<5, pre-threat) and the heart LEADER is
+  // winning, a clean-pile bot that can take the trick cheaply with a MID heart
+  // (5-10) is forced to contest: it either eats a tiny pile (splits ownership →
+  // slam dead forever, and dodges the −50 no-score rule) or a later player
+  // overtakes (split anyway). Never with J+ (breakers) or 2-4 (duck guards); never
+  // when a yet-to-act player is void in ♥ (Q♠ dump risk); never into a trick
+  // already carrying net cost ≥50. Once someone other than the leader is winning,
+  // ownership will split on its own — no force.
+  if(ls==="♥"&&tc.length&&vld.length>1){
+    const hbE=allWon.map(w=>w.filter(c=>c.suit==="♥").length);
+    const capE=hbE.reduce((a,b)=>a+b,0);
+    const ownersE=allWon.map((w,i)=>w.some(c=>c.suit==="♥")?i:-1).filter(i=>i>=0);
+    const preThreat=capE<5&&(ownersE.length===0||(ownersE.length===1&&ownersE[0]!==myIdx));
+    const myCleanE=!(allWon[myIdx]||[]).some(c=>isSC(c));
+    if(preThreat&&myCleanE){
+      const htE=tc.filter(t=>t.card.suit==="♥");
+      const wCardE=htE.length?htE.reduce((h,t)=>RO[t.card.rank]>RO[h.rank]?t.card:h,htE[0].card):null;
+      const wEntryE=wCardE?tc.find(t=>t.card===wCardE):null;
+      const leaderWinningE=!!wEntryE&&wEntryE.playerIdx===tc[0].playerIdx;
+      const trickCostE=-tc.reduce((s,t)=>s+cSc(t.card),0);
+      const playedE=new Set(tc.map(t=>t.playerIdx));
+      let dumpRiskE=false;
+      for(let i=1;i<4;i++){const s=(myIdx+i)%4;if(!playedE.has(s)&&voids[s]&&voids[s]["♥"])dumpRiskE=true;}
+      if(leaderWinningE&&trickCostE<50&&!dumpRiskE){
+        const midsE=vld.filter(c=>c.suit==="♥"&&RO[c.rank]>RO[wCardE.rank]&&RO[c.rank]>=5&&RO[c.rank]<=10);
+        if(midsE.length)vld=[midsE.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b)];
+      }
     }
   }
   // ANTI-SLAM: following hearts under a live threat (one player owns ALL captured
@@ -1902,7 +1937,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume}){
     const myWon=Sr.wonCards[me]||[];
     const superSlam=rs[me]===788;
     const matchDone=!!over;
-    const xpAdd=xpForGame(rs[me],rs,myWon,matchDone,cfg.numGames||8);
+    const bonuses=skillBonuses(Sr.playLog,me,myWon);
+    const xpAdd=xpForGame(rs[me],rs,myWon,matchDone,cfg.numGames||8,bonuses);
     const deltas=statDeltas(myWon,rs[me],rs,superSlam);
     // If the commit fails (offline / DB error), clear the marker so it retries
     // instead of silently losing the game's XP forever.
@@ -2905,6 +2941,29 @@ async function profFetch(code){
   if(data)profSaveLocal(data);
   return data; // null if not found
 }
+// Skill-bonus detection (v0812.1) from the finished game's playLog — hard-play bonuses:
+// (1) jdOff: captured J♦ in a trick led by a NON-diamond suit (someone off-suit dumped it to me) → +15
+// (2) heartOff: completed a slam where the LAST heart arrived off-suit (led suit ≠ ♥) → +30
+function skillBonuses(playLog,me,myWon){
+  const r={jdOff:false,heartOff:false};
+  if(!playLog||!playLog.length)return r;
+  const tricks={};
+  for(const e of playLog){(tricks[e.trickNum]=tricks[e.trickNum]||[]).push(e);}
+  const winnerOf=t=>{const ls=t[0].leadSuit;let b=-1,w=-1;for(const e of t){if(e.card.suit!==ls)continue;const v=RO[e.card.rank];if(v>b){b=v;w=e.pi;}}return w;};
+  for(const k in tricks){const t=tricks[k];
+    if(t.length===4&&t.some(e=>e.card.suit==="♦"&&e.card.rank==="J")){
+      if(t[0].leadSuit!=="♦"&&winnerOf(t)===me)r.jdOff=true;
+      break; // only one J♦ per game
+    }}
+  const hearts=(myWon||[]).filter(c=>c.suit==="♥").length;
+  if(hearts>=13){
+    let lastT=-1;
+    for(const k in tricks){const t=tricks[k];if(t.length===4&&t.some(e=>e.card.suit==="♥")){const tn=t[0].trickNum;if(tn>lastT)lastT=tn;}}
+    const t=tricks[lastT];
+    if(t&&t[0].leadSuit!=="♥"&&winnerOf(t)===me)r.heartOff=true;
+  }
+  return r;
+}
 // Compute per-game stat deltas from a finished game for the given seat
 function statDeltas(myWon,myScore,allScores,didSuperSlam){
   const d={games:1,jd_won:0,jd_seen:1,qs_dodged:0,qs_seen:1,slams:0,superslams:0,wins:0,rank_sum:0,rk_games:0};
@@ -2919,15 +2978,16 @@ function statDeltas(myWon,myScore,allScores,didSuperSlam){
   return d;
 }
 // XP per game (always positive) — mirrors the agreed earn table
-function xpForGame(myScore,allScores,myWon,matchDone,matchGames){
+function xpForGame(myScore,allScores,myWon,matchDone,matchGames,bonuses){
   let xp=20; // played a game
   const rank=allScores.filter(s=>s>myScore).length+1;
   xp+=[40,25,12,5][rank-1]||5;
   if(myWon.some(c=>c.suit==="♦"&&c.rank==="J"))xp+=15;
+  if(bonuses&&bonuses.jdOff)xp+=15; // skill bonus: J♦ captured off-suit
   if(myScore>=0)xp+=10;
   if(!myWon.some(c=>c.suit==="♠"&&c.rank==="Q"))xp+=5;
   const hearts=myWon.filter(c=>c.suit==="♥").length;
-  if(hearts>=13)xp+=(myScore===788?150:60);
+  if(hearts>=13){xp+=(myScore===788?150:60);if(bonuses&&bonuses.heartOff)xp+=30;} // skill bonus: slam finished with off-suit heart
   if(matchDone)xp+=(matchGames>=8?30:matchGames>=4?15:0); // scaled: match-completion bonus rewards long sessions (1-game matches earn none)
   return xp;
 }
