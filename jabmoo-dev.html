@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0812.2-dev";
+  var VER="v0812.4-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -760,6 +760,17 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     const winnerScore=currentWinnerIdx>=0?totals[currentWinnerIdx]:0;
     const winnerIsNegative=winnerScore<=-80; // winner has -80 or worse
 
+    // DISCARD HEART CONTAINMENT (v0812.3, Gung's G3 audit): once ONE player sole-
+    // owns ALL captured hearts (≥4 — tuned: ≥2 froze hearts too often in normal games, bench −5.7; ≥4 is EV-neutral) and is WINNING this trick, a discarded heart
+    // FEEDS the slam — every heart he captures is one fewer he has to fight for.
+    // In that state hearts are frozen: shed diamonds/clubs instead. Ownership split
+    // (≥2 owners) = slam dead → normal dumping resumes. Detection stays pile-based
+    // (fair play — no hand peeking).
+    const capHeartsD=allWon.reduce((s,w)=>s+w.filter(c=>c.suit==="♥").length,0);
+    const heartOwnersD=allWon.map((w,i)=>w.some(c=>c.suit==="♥")?i:-1).filter(i=>i>=0);
+    const feedRisk=currentWinnerIdx>=0&&currentWinnerIdx!==myIdx
+      &&heartOwnersD.length===1&&heartOwnersD[0]===currentWinnerIdx&&capHeartsD>=4;
+
     // 1. DUMP Q♠ immediately — best negative card to give away
     const qs=vld.find(c=>c.suit==="♠"&&c.rank==="Q");
     if(qs&&!qOut)return qs;
@@ -778,37 +789,49 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       // about to flip POSITIVE (slam +194). Handing them 10♣ would DOUBLE the slam.
       const wHeartsD=(currentWinnerIdx>=0&&allWon&&allWon[currentWinnerIdx]?allWon[currentWinnerIdx]:[]).filter(c=>c.suit==="♥").length;
       const winnerSlammingD=wHeartsD>=10;
+      // J♦-LIVE DIAMOND BAN (v0812.4, Gung's G2 T8): ♦-led trick + J♦ still unseen
+      // + at least one player yet to act → whoever drops J♦ can WIN this very trick
+      // and collect our ×2 on top of his +100 (a +200 gift — Bot2→Bot3 in the log).
+      // Every winner-based check below is meaningless while the real winner can
+      // still change: never release 10♣ into a live-J♦ diamond trick.
+      const hiDiaD=tc.filter(t=>t.card.suit==="♦").reduce((m,t)=>Math.max(m,RO[t.card.rank]),0);
+      const playedT=new Set(tc.map(t=>t.playerIdx));
+      let jdBehindD=false;
+      for(let i=1;i<4;i++){const sx=(myIdx+i)%4;if(!playedT.has(sx)&&!(voids[sx]&&voids[sx]["♦"]))jdBehindD=true;}
+      const jdTrapD=ls==="♦"&&tc.length<3&&hiDiaD<RO["J"]&&jdBehindD
+        &&!playLog.some(e=>e.card.suit==="♦"&&e.card.rank==="J")
+        &&!tc.some(t=>t.card.suit==="♦"&&t.card.rank==="J");
+      // score cards already lying IN the trick go to the winner too — count them
+      // (a J♦ sitting in the trick makes the winner's effective pile +100).
+      const wPileNetD=(currentWinnerIdx>=0&&allWon&&allWon[currentWinnerIdx]?allWon[currentWinnerIdx]:[]).reduce((t,c)=>t+cSc(c),0)
+        +tc.reduce((t,x)=>t+cSc(x.card),0);
       // dump 10♣ if the trick winner is an opponent who is quite negative
-      if(currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD){
+      if(currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD&&!jdTrapD&&wPileNetD<=0){
         // winner is the most negative, or winner already ≤ -50 → great target
         if(currentWinnerIdx===mostNegIdx||winnerScore<=-50)return tc10;
       }
       // if we're the most negative, never keep 10♣ — shed it to whoever's winning
       // (unless their round pile is net positive — doubling a J♦ profit is worse than holding)
-      const wPileNetD=(currentWinnerIdx>=0&&allWon&&allWon[currentWinnerIdx]?allWon[currentWinnerIdx]:[]).reduce((t,c)=>t+cSc(c),0);
-      if(iAmMostNeg&&currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD&&wPileNetD<=0)return tc10;
+      if(iAmMostNeg&&currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD&&!jdTrapD&&wPileNetD<=0)return tc10;
     }
 
     // 3. DUMP big hearts (Q/K/A♥) — unless we're attempting slam ourselves
-    if(!iAmSlamming){
+    //    or the winner is a budding slammer (feedRisk — never feed his pile)
+    if(!iAmSlamming&&!feedRisk){
       // Dump worst heart first (A♥=-50, K♥=-40, Q♥=-30...)
       const bigHearts=vld.filter(c=>c.suit==="♥"&&["Q","K","A"].includes(c.rank))
         .sort((a,b)=>cSc(a)-cSc(b)); // most negative first
       if(bigHearts.length)return bigHearts[0];
     }
 
-    // Slam prevention: dump hearts to slammer
-    if(criticalSlam&&tc.some(t=>t.playerIdx===slammerIdx)&&!iAmSlamming){
-      const bigHearts=vld.filter(c=>c.suit==="♥").sort((a,b)=>cSc(a)-cSc(b));
-      if(bigHearts.length)return bigHearts[0];
-    }
-    if(slamThreat&&tc.some(t=>t.card.suit==="♥")&&!iAmSlamming){
-      const bigHearts=vld.filter(c=>c.suit==="♥").sort((a,b)=>cSc(a)-cSc(b));
-      if(bigHearts.length)return bigHearts[0];
-    }
+    // (v0812.3) REMOVED two backwards "dump hearts to slammer" rules that sat here
+    // — pre-audit Hearts-style thinking ("punish the collector") that in jabmoo's
+    // slam-flip actually HANDED the slammer his missing hearts (Gung's G3: T6-T9
+    // discards 9♥/8♥/5♥/6♥ fed Bot2 to a complete slam). Feeding a threat-level
+    // slammer is never right: deny via feedRisk above; real defense = break/contain.
 
-    // Dump remaining hearts (worst first), unless slamming
-    if(!iAmSlamming){
+    // Dump remaining hearts (worst first), unless slamming or feeding a slammer
+    if(!iAmSlamming&&!feedRisk){
       const hearts=vld.filter(c=>c.suit==="♥").sort((a,b)=>cSc(a)-cSc(b));
       if(hearts.length)return hearts[0];
     }
@@ -822,6 +845,12 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       const droppable=nonPen.filter(c=>RO[c.rank]>4&&c.rank!=="A");
       if(droppable.length)return droppable.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
       return nonPen.reduce((a,b)=>RO[a.rank]>RO[b.rank]?a:b);
+    }
+    // forced to feed hearts under feedRisk (only penalty cards left): give the
+    // SMALLEST heart — the old fallback picked the MOST negative (could gift A♥)
+    if(feedRisk){
+      const hOnly=vld.filter(c=>c.suit==="♥");
+      if(hOnly.length)return hOnly.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
     }
     // fallback: keep J♦/10♣ if useful, dump least negative
     const keepable=vld.filter(c=>{
@@ -1186,13 +1215,41 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
   if(tc.length&&vld.length>1){
     const w0=trickWin(tc,ls);
     const wH=(allWon&&allWon[w0]?allWon[w0]:[]).filter(c=>c.suit==="♥").length;
-    const wNet=(allWon&&allWon[w0]?allWon[w0]:[]).reduce((t,c)=>t+cSc(c),0);
-    // winner's pile net-positive (banked J♦): giving them 10♣ doubles their profit
+    const wNet=(allWon&&allWon[w0]?allWon[w0]:[]).reduce((t,c)=>t+cSc(c),0)
+      +tc.reduce((t,x)=>t+cSc(x.card),0); // + score cards already in the trick (they go to the winner)
+    // J♦-LIVE DIAMOND BAN (MC, v0812.4): ♦-led, J♦ unseen, players still behind →
+    // a yet-to-act J♦ wins the trick and our discarded 10♣ doubles his +100 to +200.
+    if(ls==="♦"&&tc.length<3
+      &&tc.filter(t=>t.card.suit==="♦").reduce((m,t)=>Math.max(m,RO[t.card.rank]),0)<RO["J"]
+      &&[1,2,3].some(i=>{const sx=(myIdx+i)%4;return !tc.some(t=>t.playerIdx===sx)&&!(voids[sx]&&voids[sx]["♦"]);})){
+      // (narrowed: only while the winning diamond is BELOW J — a behind J♦ can
+      // overtake and win; with Q/K/A winning nobody ducks J♦ voluntarily, and a
+      // blanket ban froze 10♣ through most early ♦ tricks, bench −3.4)
+      const jdSeenM=playLog.some(e=>e.card.suit==="♦"&&e.card.rank==="J")
+        ||tc.some(t=>t.card.suit==="♦"&&t.card.rank==="J")
+        ||hand.some(c=>c.suit==="♦"&&c.rank==="J");
+      if(!jdSeenM){
+        const prJT=vld.filter(c=>!(c.suit==="♣"&&c.rank==="10"));
+        if(prJT.length)vld=prJT;
+      }
+    }
+    // winner's pile net-positive (banked or in-trick J♦): giving them 10♣ doubles their profit
     if(w0!==myIdx&&wNet>0&&vld.length>1){
       const hiLedP=tc.some(t=>t.card.suit===ls)?Math.max(...tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank])):0;
       const losingP=c=>c.suit!==ls||RO[c.rank]<hiLedP;
       const prP=vld.filter(c=>!(c.suit==="♣"&&c.rank==="10"&&losingP(c)));
       if(prP.length)vld=prP;
+    }
+    // DISCARD HEART CONTAINMENT (MC, v0812.3): winner sole-owns ALL captured
+    // hearts (≥4) → hearts are frozen as discards (they can never win a non-♥
+    // trick → always land on the budding slammer). Split ownership lifts it.
+    if(ls!=="♥"&&w0!==myIdx){
+      const hOwnM=allWon.map((w,i)=>w.some(c=>c.suit==="♥")?i:-1).filter(i=>i>=0);
+      const capAllM=allWon.reduce((s,w)=>s+w.filter(c=>c.suit==="♥").length,0);
+      if(hOwnM.length===1&&hOwnM[0]===w0&&capAllM>=4){
+        const prH=vld.filter(c=>c.suit!=="♥");
+        if(prH.length)vld=prH;
+      }
     }
     if(w0!==myIdx&&wH>=10){
       const hiLed=tc.some(t=>t.card.suit===ls)?Math.max(...tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank])):0;
