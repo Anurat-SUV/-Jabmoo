@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0723.1-dev";
+  var VER="v0723.8-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -446,7 +446,7 @@ function isLowestRemaining(card,hand,playLog){
 function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
   playLog=playLog||[];
   voids=voids||[{},{},{},{}];
-  const vld=getValid(hand,ls,tc);
+  let vld=getValid(hand,ls,tc);
   // ALL cards seen so far: from playLog (every card played) + cards in current trick
   // This is the true "what's been played" — allWon only has SCORE cards, which
   // misses plain spades/clubs/diamonds needed for accurate counting.
@@ -466,9 +466,35 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
 
   // Slam detection
   const heartsByPlayer=allWon.map(w=>w.filter(c=>c.suit==="♥").length);
-  const slamThreat=heartsByPlayer.some((h,i)=>i!==myIdx&&h>=7);
-  const criticalSlam=heartsByPlayer.some((h,i)=>i!==myIdx&&h>=10);
+  const capturedHearts=heartsByPlayer.reduce((a,b)=>a+b,0);
+  // a REAL threat owns every captured heart so far (split hearts = slam already dead)
+  const slamThreat=heartsByPlayer.some((h,i)=>i!==myIdx&&h>=5&&h===capturedHearts);
+  const criticalSlam=heartsByPlayer.some((h,i)=>i!==myIdx&&h>=10&&h===capturedHearts);
   const slammerIdx=heartsByPlayer.reduce((mi,h,i)=>h>heartsByPlayer[mi]?i:mi,0);
+  // ── COVER GUARD ── holding Q♠ while A♠ is still unseen: never LEAD K♠.
+  // A♠ is the only card our Q can ever hide under in-suit; leading K flushes it
+  // out for nothing (and telegraphs the pig to everyone at the table).
+  if(!tc.length&&vld.length>1&&hand.some(c=>c.suit==="♠"&&c.rank==="Q")){
+    const aSeen=allPlayed.some(c=>c.suit==="♠"&&c.rank==="A")||hand.some(c=>c.suit==="♠"&&c.rank==="A");
+    if(!aSeen){
+      const prK=vld.filter(c=>!(c.suit==="♠"&&c.rank==="K"));
+      if(prK.length)vld=prK;
+    }
+  }
+  // ── SUPER-SLAM CONTAINMENT ── a critical slammer (owns ALL captured hearts, ≥10)
+  // winning this trick must NEVER receive Q♠ while 788 is still live (no special
+  // card — Q♠/J♦/10♣ — captured by anyone else yet). Once any special went elsewhere,
+  // 788 is dead and feeding him the pig is GOOD again (slam doesn't cover the −100).
+  if(criticalSlam&&tc.length&&vld.length>1){
+    const cwSl=trickWin(tc,ls);
+    if(cwSl===slammerIdx){
+      const otherHasSpecial=allWon.some((w,i)=>i===slammerIdx?false:w.some(c=>(c.suit==="♠"&&c.rank==="Q")||(c.suit==="♦"&&c.rank==="J")||(c.suit==="♣"&&c.rank==="10")));
+      if(!otherHasSpecial){
+        const prPig=vld.filter(c=>!(c.suit==="♠"&&c.rank==="Q"));
+        if(prPig.length)vld=prPig;
+      }
+    }
+  }
   const iAmWorst=totals[myIdx]===Math.min(...totals);
   // Penalty cards I've ALREADY captured this round (pig / hearts). If I'm holding losses
   // and 10♣ is still live, catching it would DOUBLE my damage — so I must not lead into it.
@@ -758,7 +784,9 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
         if(currentWinnerIdx===mostNegIdx||winnerScore<=-50)return tc10;
       }
       // if we're the most negative, never keep 10♣ — shed it to whoever's winning
-      if(iAmMostNeg&&currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD)return tc10;
+      // (unless their round pile is net positive — doubling a J♦ profit is worse than holding)
+      const wPileNetD=(currentWinnerIdx>=0&&allWon&&allWon[currentWinnerIdx]?allWon[currentWinnerIdx]:[]).reduce((t,c)=>t+cSc(c),0);
+      if(iAmMostNeg&&currentWinnerIdx!==myIdx&&currentWinnerIdx>=0&&!winnerSlammingD&&wPileNetD<=0)return tc10;
     }
 
     // 3. DUMP big hearts (Q/K/A♥) — unless we're attempting slam ourselves
@@ -905,7 +933,10 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
       const stuckRisk=iAmDeepNeg||escapeClubs<=2||clubsGone>=7;
       // SLAM GUARD: never shed 10♣ into a trick won by a slam-threat player (≥10 hearts piled)
       const wHeartsC=(cwIdx>=0&&allWon&&allWon[cwIdx]?allWon[cwIdx]:[]).filter(c=>c.suit==="♥").length;
-      if((goodTarget||stuckRisk||iHoldLosses)&&wHeartsC<10)return has10C;
+      // PROFIT GUARD: never shed 10♣ into a trick won by a player whose ROUND pile is
+      // net POSITIVE (banked J♦) — the ×2 would DOUBLE their profit (+100 → +200).
+      const wPileNet=(cwIdx>=0&&allWon&&allWon[cwIdx]?allWon[cwIdx]:[]).reduce((t,c)=>t+cSc(c),0);
+      if((goodTarget||stuckRisk||iHoldLosses)&&wHeartsC<10&&wPileNet<=0)return has10C;
       // else: hold 10♣, fall through to normal club play
     }
     // Try to shed J♣ safely
@@ -922,7 +953,9 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
   // Trick has score cards: DUCK HIGH — play the highest card that still loses
   // (sheds dangerous high cards safely). If forced to win: last pos → dump highest
   // (we win anyway), else lowest (give later players a chance to overtake).
-  if(tc.some(t=>isSC(t.card))){
+  // NOT for hearts-following: a heart trick ALWAYS has score cards, which used to
+  // short-circuit here and dead-code the entire anti-slam hearts section below.
+  if(ls!=="♥"&&tc.some(t=>isSC(t.card))){
     const inTrick=tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank]);
     const hi=inTrick.length?Math.max(...inTrick):0;
     const under=vld.filter(c=>c.suit===ls&&RO[c.rank]<hi);
@@ -982,20 +1015,23 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     }
 
     // SLAM THREAT defense: someone is collecting hearts fast
-    if(slamThreat||criticalSlam){
-      const slammerTotal=heartsByPlayer[slammerIdx]+heartsInTrick.length;
-      if(currentWinner===slammerIdx||slammerIdx===tc[0]?.playerIdx){
-        if(slammerTotal>=8){
-          const h10=vld.find(c=>c.suit==="♥"&&c.rank==="10");
-          if(h10)return h10;
-        }
-        if(slammerTotal<=7){
-          const midH=vld.filter(c=>c.suit==="♥"&&RO[c.rank]>=8&&RO[c.rank]<=10).sort((a,b)=>RO[a.rank]-RO[b.rank]);
-          if(midH.length)return midH[0];
-        }
+    if((slamThreat||criticalSlam)&&!iAmSlamming){
+      const slammerWinning=currentWinner===slammerIdx||(!heartsInTrick.length&&tc[0]&&tc[0].playerIdx===slammerIdx);
+      if(slammerWinning){
+        // 1) BREAK the slam if we can beat the current winner — top priority
         if(winnerCard){
           const higher=vld.filter(c=>c.suit==="♥"&&RO[c.rank]>RO[winnerCard.rank]);
           if(higher.length)return higher.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+        }
+        // 2) Can't beat → feed CHEAP and PRESERVE BREAKERS: never burn our top heart
+        //    (J+) while lower hearts exist; prefer mids (5-10) so tiny guards (2-4)
+        //    stay for ducking later. (A's case: A♥ led, hold K♥+10♥ → give 10♥ keep K♥.)
+        const hs=vld.filter(c=>c.suit==="♥").sort((a,b)=>RO[a.rank]-RO[b.rank]);
+        if(hs.length){
+          const top=hs[hs.length-1];
+          const pool=(hs.length>1&&RO[top.rank]>=11)?hs.slice(0,-1):hs;
+          const mid=pool.filter(c=>RO[c.rank]>=5&&RO[c.rank]<=10);
+          return (mid.length?mid:pool)[0];
         }
       }
     }
@@ -1124,6 +1160,15 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
       if(lows.length>0)vld=lows;
     }
   }
+  // COVER GUARD (MC): holding Q♠ with A♠ unseen → never LEAD K♠ (burns the only
+  // in-suit cover for our own pig and telegraphs it).
+  if(!tc.length&&vld.length>1&&hand.some(c=>c.suit==="♠"&&c.rank==="Q")){
+    const aSeenM=playLog.some(e=>e.card.suit==="♠"&&e.card.rank==="A")||hand.some(c=>c.suit==="♠"&&c.rank==="A");
+    if(!aSeenM){
+      const prKM=vld.filter(c=>!(c.suit==="♠"&&c.rank==="K"));
+      if(prKM.length)vld=prKM;
+    }
+  }
   // HARD RULE: a loss-holder (pen ≤ −100 piled) never LEADS 10♣ — ducking opponents
   // send the ×2 straight back to double the damage.
   if(!tc.length&&vld.length>1){
@@ -1138,6 +1183,14 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
   if(tc.length&&vld.length>1){
     const w0=trickWin(tc,ls);
     const wH=(allWon&&allWon[w0]?allWon[w0]:[]).filter(c=>c.suit==="♥").length;
+    const wNet=(allWon&&allWon[w0]?allWon[w0]:[]).reduce((t,c)=>t+cSc(c),0);
+    // winner's pile net-positive (banked J♦): giving them 10♣ doubles their profit
+    if(w0!==myIdx&&wNet>0&&vld.length>1){
+      const hiLedP=tc.some(t=>t.card.suit===ls)?Math.max(...tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank])):0;
+      const losingP=c=>c.suit!==ls||RO[c.rank]<hiLedP;
+      const prP=vld.filter(c=>!(c.suit==="♣"&&c.rank==="10"&&losingP(c)));
+      if(prP.length)vld=prP;
+    }
     if(w0!==myIdx&&wH>=10){
       const hiLed=tc.some(t=>t.card.suit===ls)?Math.max(...tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank])):0;
       const losing=c=>c.suit!==ls||RO[c.rank]<hiLed;
@@ -1145,6 +1198,66 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
       if(pr.length)vld=pr;
       pr=vld.filter(c=>!(c.suit==="♦"&&c.rank==="J"&&losing(c)));
       if(pr.length)vld=pr;
+      // Q♠: deny only while 788 is still live — if any special card already went
+      // to another player, giving the slammer the pig costs him a clean −100.
+      const otherSp=allWon.some((w,i)=>i===w0?false:w.some(c=>(c.suit==="♠"&&c.rank==="Q")||(c.suit==="♦"&&c.rank==="J")||(c.suit==="♣"&&c.rank==="10")));
+      if(!otherSp){
+        pr=vld.filter(c=>!(c.suit==="♠"&&c.rank==="Q"&&losing(c)));
+        if(pr.length)vld=pr;
+      }
+    }
+  }
+  // PIG EXIT (force): following spades holding Q♠ with a HIGHER spade already in
+  // the trick — Q♠ is guaranteed to land on another player. Once K/A♠ are gone the
+  // pig becomes the boss spade and can only come back to us; an in-suit shed under
+  // a bigger spade is the last cheap exit, so take it. (Exception: a critical
+  // slammer with 788 live who hasn't played this trick yet could overtake and
+  // CAPTURE it — then don't force; the containment prune above already removed Q♠
+  // when the slammer is currently winning.)
+  {
+    const qEx=vld.find(c=>c.suit==="♠"&&c.rank==="Q");
+    // two guaranteed-to-lose pig exits: (a) following ♠ under a higher spade,
+    // (b) DISCARDING while void in the led suit (Q♠ can never win the trick).
+    const inSuitShed=ls==="♠"&&tc.some(t=>t.card.suit==="♠"&&RO[t.card.rank]>RO["Q"]);
+    const discarding=!!ls&&ls!=="♠"&&!hand.some(c=>c.suit===ls);
+    if(qEx&&tc.length&&(inSuitShed||discarding)){
+      const hb2=allWon.map(w=>w.filter(c=>c.suit==="♥").length);
+      const cap2=hb2.reduce((a,b)=>a+b,0);
+      let crit=-1;hb2.forEach((h,i)=>{if(i!==myIdx&&h>=10&&h===cap2)crit=i;});
+      const critSafe=crit<0||tc.some(t=>t.playerIdx===crit)
+        ||allWon.some((w,i)=>i===crit?false:w.some(c=>(c.suit==="♠"&&c.rank==="Q")||(c.suit==="♦"&&c.rank==="J")||(c.suit==="♣"&&c.rank==="10")));
+      // A's refinement: if we hold enough LOW-spade escorts to duck every spade
+      // lead the enemies could still make, holding the pig for a TARGETED discard
+      // is stronger (we choose who eats it) — only force the dump when we could
+      // get flushed (escorts after this trick < enemy spades remaining).
+      const escortsAfter=hand.filter(c=>c.suit==="♠"&&RO[c.rank]<RO["Q"]).length-(inSuitShed?1:0);
+      const seenSp=new Set();
+      hand.forEach(c=>{if(c.suit==="♠")seenSp.add(c.key);});
+      playLog.forEach(e=>{if(e.card.suit==="♠")seenSp.add(e.card.key);});
+      tc.forEach(t=>{if(t.card.suit==="♠")seenSp.add(t.card.key);});
+      let enemySp=0;for(const r of RANKS){if(!seenSp.has(r+"♠"))enemySp++;}
+      const canHideForever=escortsAfter>=enemySp;
+      if(critSafe&&!canHideForever)vld=[qEx];
+    }
+  }
+  // ANTI-SLAM: following hearts under a live threat (one player owns ALL captured
+  // hearts, ≥5) with the slammer winning and no way to beat — never burn our top
+  // heart (J+): it is a future slam-breaker. Prune it from MC candidates.
+  if(ls==="♥"&&vld.length>1&&vld.every(c=>c.suit==="♥")){
+    const hb=allWon.map(w=>w.filter(c=>c.suit==="♥").length);
+    const capH=hb.reduce((a,b)=>a+b,0);
+    let th=-1;hb.forEach((h,i)=>{if(i!==myIdx&&h>=5&&h===capH)th=i;});
+    if(th>=0){
+      const ht=tc.filter(t=>t.card.suit==="♥");
+      const wCard=ht.length?ht.reduce((h,t)=>RO[t.card.rank]>RO[h.rank]?t.card:h,ht[0].card):null;
+      const wEntry=wCard?tc.find(t=>t.card===wCard):null;
+      const wIdx=wEntry?wEntry.playerIdx:(tc[0]?tc[0].playerIdx:-1);
+      const canBeat=wCard?vld.some(c=>RO[c.rank]>RO[wCard.rank]):false;
+      if(wIdx===th&&!canBeat){
+        const sorted=[...vld].sort((a,b)=>RO[a.rank]-RO[b.rank]);
+        const top=sorted[sorted.length-1];
+        if(RO[top.rank]>=11){const pr=vld.filter(c=>c.key!==top.key);if(pr.length)vld=pr;}
+      }
     }
   }
   if(vld.length===1)return vld[0];
