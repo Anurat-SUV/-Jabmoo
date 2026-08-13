@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0813.2-dev";
+  var VER="v0813.4-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1755,11 +1755,13 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
 }
 
 // ── GAME OVER ──────────────────────────────────────────────────
-function GameOver({players,totals,lang,history,onAgain,onHome}){
+function GameOver({players,totals,lang,history,onAgain,onHome,showCoin}){
   const confetti=React.useMemo(()=>Array(26).fill(0).map((_,i)=>({l:Math.random()*100,d:2.2+Math.random()*2.5,dl:Math.random()*1.6,e:["🎉","✨","🐷","🃏","💰"][i%5]})),[]);
   const L=lang==="th";
   const [showHist,setShowHist]=useState(false);
-  const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i])}))].sort((a,b)=>b.score-a.score);
+  const cc=(showCoin&&typeof coinCalc==="function")?coinCalc(totals):null;
+  const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i]),coin:cc?cc.net[i]:null,coinRake:cc?cc.rake[i]:0}))].sort((a,b)=>b.score-a.score);
+  const COLW=cc?"repeat(4,minmax(46px,auto))":"repeat(3,minmax(48px,auto))";
   return (
     <div style={{minHeight:"100vh",height:"100dvh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"calc(1rem + env(safe-area-inset-top)) 1rem calc(1rem + env(safe-area-inset-bottom))",overflowY:"auto"}}>
       {confetti.map((c,i)=><span key={i} className="confetti" style={{left:c.l+"%",animationDuration:c.d+"s",animationDelay:c.dl+"s"}}>{c.e}</span>)}
@@ -1791,22 +1793,33 @@ function GameOver({players,totals,lang,history,onAgain,onHome}){
               <path d="M24 48 Q30 53 36 48" fill="none" stroke="#c0607a" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           );
-          return s.map((p,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",marginBottom:7,background:i===0?"#eff6ff":"#f9fafb",borderRadius:10,border:"1.5px solid",borderColor:i===0?"#3b82f6":"#e5e7eb"}}>
-              <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                {i<3
-                  ? <span style={{fontSize:24}}>{medals[i]}</span>
-                  : <PigFace/>
-                }
-                <span style={{color:"#111827",fontSize:15,fontWeight:600}}>{p.name}</span>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <span style={{fontSize:17,fontWeight:700,color:p.score>0?"#059669":p.score<0?"#dc2626":"#6b7280"}}>{p.score>0?"+":""}{p.score}</span>
-                <span style={{fontSize:17,fontWeight:600,color:"#9ca3af",marginLeft:4}}>({p.h>0?"+":""}{p.h})</span>
-                <span style={{fontSize:17,fontWeight:600,color:spreads[i]>0?"#059669":spreads[i]<0?"#dc2626":"#9ca3af",marginLeft:4}}>({spreads[i]>0?"+":""}{spreads[i]})</span>
+          const hd=(t)=><span style={{fontSize:9,fontWeight:700,color:"#9ca3af",textAlign:"right"}}>{t}</span>;
+          return (<React.Fragment>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 16px 4px"}}>
+              <span style={{fontSize:9,fontWeight:700,color:"#9ca3af"}}>{L?"ผู้เล่น":"Player"}</span>
+              <div style={{display:"grid",gridTemplateColumns:COLW,gap:2}}>
+                {hd(L?"คะแนน":"Score")}{hd(L?"หลัก":"Units")}{hd(L?"ได้เสีย":"±Units")}{cc?hd("💰 coin"):null}
               </div>
             </div>
-          ));
+            {s.map((p,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 12px 11px 16px",marginBottom:7,background:i===0?"#eff6ff":"#f9fafb",borderRadius:10,border:"1.5px solid",borderColor:i===0?"#3b82f6":"#e5e7eb"}}>
+              <div style={{display:"flex",gap:8,alignItems:"center",minWidth:0}}>
+                {i<3
+                  ? <span style={{fontSize:22}}>{medals[i]}</span>
+                  : <PigFace/>
+                }
+                <span style={{color:"#111827",fontSize:14,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:COLW,gap:2,alignItems:"center"}}>
+                <span style={{fontSize:14,fontWeight:700,textAlign:"right",color:p.score>0?"#059669":p.score<0?"#dc2626":"#6b7280"}}>{p.score>0?"+":""}{p.score}</span>
+                <span style={{fontSize:14,fontWeight:600,textAlign:"right",color:"#9ca3af"}}>{p.h>0?"+":""}{p.h}</span>
+                <span style={{fontSize:14,fontWeight:600,textAlign:"right",color:spreads[i]>0?"#059669":spreads[i]<0?"#dc2626":"#9ca3af"}}>{spreads[i]>0?"+":""}{spreads[i]}</span>
+                {cc?<span title={p.coinRake?("ต๋ง "+p.coinRake):""} style={{fontSize:14,fontWeight:800,textAlign:"right",color:p.coin>0?"#059669":p.coin<0?"#dc2626":"#9ca3af"}}>{p.coin>0?"+":""}{p.coin.toLocaleString()}</span>:null}
+              </div>
+            </div>
+            ))}
+            {cc&&<div style={{textAlign:"right",fontSize:9,color:"#9ca3af",padding:"0 16px",marginTop:-2,marginBottom:6}}>{L?"coin หักต๋ง 15% ฝั่งได้แล้ว · หลัก ×100":"coin after 15% rake · ×100/unit"}</div>}
+          </React.Fragment>);
         })()}
         {/* History toggle */}
         <button onClick={()=>setShowHist(h=>!h)} style={{marginTop:"1rem",width:"100%",padding:10,background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,fontSize:13,fontWeight:600,color:"#374151",cursor:"pointer"}}>
@@ -1972,7 +1985,7 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail,corner}
   );
 }
 
-function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoins}){
+function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoins,coins}){
   const mySeat=net?net.mySeat:0;
   const isClient=!!(net&&net.role==="client");
   const isHost=!!(net&&net.role==="host");
@@ -2397,7 +2410,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       playApplause();
     }
     const hd=[...histRef.current];
-    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!net} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
   }
 
   const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2408,6 +2421,17 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(w.length===0) return -50;  // no score cards won → -50
     return calcScore(w,wt[i]);
   });
+  // per-seat coin chip: base (human = real balance, bots = 10,000 dealer tray per
+  // match) + running settle preview from completed games' totals — numbers move
+  // between games like a real table; the source math is the same coinCalc used at
+  // settle, so the final chip equals the GameOver table. Offline + COIN_ON only.
+  const coinLive=(typeof COIN_ON!=="undefined"&&COIN_ON&&!net)?coinCalc(S.totals):null;
+  const coinDisp=i=>{
+    if(!coinLive)return null;
+    const base=i===0?(coins!=null?coins:null):10000;
+    if(base==null)return null;
+    return fmtCoin(base+coinLive.net[i]);
+  };
   function ScoreCol(){
     return (
       <div style={{display:"flex",flexDirection:"column",gap:2,padding:"2px 0"}}>
@@ -2418,6 +2442,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               <span style={{fontSize:11,fontWeight:800,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</span>
               <span style={{fontSize:9,color:"#9ca3af",alignSelf:"center"}}>{cgS[i]>0?"+":""}{cgS[i]}</span>
             </div>
+            {coinDisp(i)&&<div style={{fontSize:8,fontWeight:800,color:"#b45309",whiteSpace:"nowrap"}}>💰{coinDisp(i)}</div>}
           </div>
         ))}
       </div>
@@ -2763,6 +2788,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               <span style={{width:20,height:20,borderRadius:10,background:SEATCOL[i],color:"#fff",fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:i===S.curIdx?"2px solid #d4af37":"2px solid transparent",animation:i===S.curIdx?"goldPulse 1.2s infinite":"none"}}>{(p.name||"?").trim().charAt(0).toUpperCase()}</span>
               <span style={{fontSize:12,fontWeight:700,color:i===S.curIdx?"#d4af37":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}{i===0?" ★":""}</span>
             </div>
+            {coinDisp(i)&&<div style={{fontSize:9,fontWeight:800,color:"#d4af37"}}>💰 {coinDisp(i)}</div>}
             <div style={{fontSize:15,fontWeight:700,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</div>
             <div style={{fontSize:15,fontWeight:700,color:cgS[i]>0?"#0891b2":cgS[i]<0?"#e11d48":"#9ca3af"}}>{cgS[i]>0?"+":""}{cgS[i]}</div>
             <div style={{fontSize:10,color:"#9ca3af"}}>{totalTxt}/{curTxt}</div>
@@ -3008,6 +3034,15 @@ const COIN_RAKE=0.15;   // 15% rake on WINNING seats → HOUSE
 const COIN_GRANT=10000; // first-entry grant (players entering from launch day)
 const COIN_REFILL=5000; // daily top-up when broke
 const COIN_BROKE=500;   // broke threshold (below = can't meaningfully stake)
+// compact coin display (A's rule): <10,000 full with comma ("8,000"); 10K-999K → "12K"/"12.5K"/"125K"; ≥1M → "1.2M"
+function fmtCoin(n){
+  if(n==null)return "";
+  const neg=n<0,a=Math.abs(n);let s;
+  if(a<10000)s=a.toLocaleString();
+  else if(a<999500){const k=a/1000;s=(k>=100?Math.round(k):Math.round(k*10)/10)+"K";}
+  else {const m=a/1000000;s=(m>=100?Math.round(m):Math.round(m*10)/10)+"M";}
+  return (neg?"-":"")+s;
+}
 function bkkDay(ts){return new Date((ts?new Date(ts).getTime():Date.now())+7*3600*1000).toISOString().slice(0,10);} // Thai midnight boundary
 function coinErrMsg(e){
   const s=String((e&&e.message)||e||"");
@@ -3062,15 +3097,20 @@ async function coinDaily(code){
     return {balance:bal,granted:false,refilled,broke:bal<COIN_BROKE};
   }catch(e){return {error:coinErrMsg(e)};}
 }
+// pure per-seat coin math from final totals (shared by settle + game-over display)
+function coinCalc(totals){
+  const hs=totals.map(toH);
+  const sum=hs.reduce((a,b)=>a+b,0);
+  const gross=hs.map(h=>(4*h-sum)*COIN_MULT);
+  const rake=gross.map(g=>g>0?Math.round(g*COIN_RAKE):0);
+  const net=gross.map((g,i)=>g-rake[i]);
+  return {hs,gross,rake,net};
+}
 // settle an OFFLINE match (1 human + 3 bots → pooled BOT account + HOUSE rake)
 async function coinSettleOffline(totals,humanSeat,code,games){
   if(!COIN_ON||!code)return null;
   try{
-    const hs=totals.map(toH);
-    const sum=hs.reduce((a,b)=>a+b,0);
-    const gross=hs.map(h=>(4*h-sum)*COIN_MULT);
-    const rake=gross.map(g=>g>0?Math.round(g*COIN_RAKE):0);
-    const net=gross.map((g,i)=>g-rake[i]);
+    const {hs,gross,rake,net}=coinCalc(totals);
     const matchId=code+"-"+Date.now();
     const botNet=net.reduce((s,n,i)=>i===humanSeat?s:s+n,0);
     const rakeTotal=rake.reduce((a,b)=>a+b,0);
@@ -4038,7 +4078,7 @@ function App(){
       <button onClick={()=>setCoinResult(null)} style={{border:"none",background:"rgba(255,255,255,0.15)",color:"#fff",borderRadius:8,padding:"4px 9px",cursor:"pointer",fontWeight:800}}>✕</button>
     </div>):null;
   if(!cfg)return <React.Fragment>{codeModal}{namePrompt}{resumeModal}{coinBanner}<Setup onStart={c=>{setResumeGame(null);setCfg(c);}} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)} coins={coins} coinMsg={coinMsg}/></React.Fragment>;
-  return <React.Fragment>{codeModal}{coinBanner}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>{setCfg(null);setResumeGame(null);try{localStorage.removeItem("jm-savegame-v1");}catch(e){}}} resume={resumeGame} onMatchCoins={COIN_ON?settleCoins:null}/></React.Fragment>;
+  return <React.Fragment>{codeModal}{coinBanner}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>{setCfg(null);setResumeGame(null);try{localStorage.removeItem("jm-savegame-v1");}catch(e){}}} resume={resumeGame} onMatchCoins={COIN_ON?settleCoins:null} coins={coins}/></React.Fragment>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);

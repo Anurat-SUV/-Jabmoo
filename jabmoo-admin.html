@@ -159,6 +159,111 @@ function Detail({p,onClose,onChanged}){
   );
 }
 
+function fmtCoin(n){
+  if(n==null)return "";
+  const neg=n<0,a=Math.abs(n);let s;
+  if(a<10000)s=a.toLocaleString();
+  else if(a<999500){const k=a/1000;s=(k>=100?Math.round(k):Math.round(k*10)/10)+"K";}
+  else {const m=a/1000000;s=(m>=100?Math.round(m):Math.round(m*10)/10)+"M";}
+  return (neg?"-":"")+s;
+}
+function CoinView(){
+  const [txs,setTxs]=useState(null);
+  const [matches,setMatches]=useState(null);
+  const [pl,setPl]=useState(null);
+  const [err,setErr]=useState("");
+  const [q,setQ]=useState("");
+  const [ty,setTy]=useState("");
+  const [loadedAt,setLoadedAt]=useState(null);
+  async function load(){
+    setErr("");
+    try{
+      const c=await db();
+      const t=await c.from("coin_tx").select("*").order("id",{ascending:false}).limit(300);
+      if(t.error)throw t.error;
+      const m=await c.from("coin_match").select("*").order("id",{ascending:false}).limit(50);
+      if(m.error)throw m.error;
+      const p=await c.from("players").select("code,name,coins").not("coins","is",null).order("coins",{ascending:false});
+      if(p.error)throw p.error;
+      setTxs(t.data||[]);setMatches(m.data||[]);setPl(p.data||[]);setLoadedAt(new Date());
+    }catch(e){setErr((e.message||"โหลดไม่สำเร็จ")+" — รัน COIN-SETUP.sql หรือยัง?");}
+  }
+  useEffect(()=>{load();},[]);
+  const balOf=code=>{const r=(txs||[]).find(t=>t.code===code);return r?(r.balance_after||0):0;};
+  const bkkDay=ts=>new Date(new Date(ts).getTime()+7*3600000).toISOString().slice(0,10);
+  const bkkFmt=ts=>{const d=new Date(new Date(ts).getTime()+7*3600000);return d.toISOString().slice(5,16).replace("T"," ");};
+  const today=bkkDay(Date.now());
+  const T=txs||[];
+  const refillToday=T.filter(t=>t.type==="REFILL"&&bkkDay(t.created_at)===today).length;
+  const grantToday=T.filter(t=>t.type==="GRANT"&&bkkDay(t.created_at)===today).length;
+  const playerTotal=(pl||[]).reduce((s,r)=>s+(r.coins||0),0);
+  // zero-sum audit within the loaded window (skip matches touching the window edge)
+  const edgeIds=new Set(T.slice(-6).map(t=>t.match_id).filter(Boolean));
+  const sums={};T.forEach(t=>{if(t.match_id&&!edgeIds.has(t.match_id))sums[t.match_id]=(sums[t.match_id]||0)+t.amount;});
+  const bad=Object.entries(sums).filter(([k,v])=>v!==0);
+  const view=T.filter(t=>(!q.trim()||(t.code||"").toLowerCase().includes(q.trim().toLowerCase()))&&(!ty||t.type===ty));
+  return (
+    <React.Fragment>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        <Stat label="coin ผู้เล่นรวม" value={fmtCoin(playerTotal)}/>
+        <Stat label="🏦 HOUSE (ต๋งสะสม)" value={fmtCoin(balOf("HOUSE"))}/>
+        <Stat label="🤖 BOT (สุทธิ)" value={fmtCoin(balOf("BOT"))}/>
+        <Stat label="แจกใหม่วันนี้" value={grantToday}/>
+        <Stat label="refill วันนี้" value={refillToday}/>
+        <Stat label="audit zero-sum" value={txs?(bad.length===0?"✓ ผ่าน":("✗ "+bad.length)) :"…"}/>
+      </div>
+      {bad.length>0&&<div className="card" style={{color:"#fca5a5",fontSize:11,marginBottom:10}}>⚠️ match ที่ผลรวมไม่เป็นศูนย์: {bad.map(([k,v])=>k+" ("+(v>0?"+":"")+v+")").join(", ")}</div>}
+      {err&&<div className="card" style={{color:"#fca5a5",fontSize:12,marginBottom:10}}>⚠️ {err}</div>}
+      <div style={{display:"flex",gap:8,marginBottom:8}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="กรองรหัส / BOT / HOUSE…" style={{flex:1}}/>
+        <select value={ty} onChange={e=>setTy(e.target.value)} style={{background:"#0f3a2b",color:"#fff",border:"1px solid #2c5c46",borderRadius:8,padding:"6px 8px",fontSize:12}}>
+          <option value="">ทุกประเภท</option>
+          <option value="GRANT">GRANT</option><option value="REFILL">REFILL</option>
+          <option value="SETTLE">SETTLE</option><option value="RAKE">RAKE</option><option value="ADMIN_ADJ">ADMIN_ADJ</option>
+        </select>
+        <button onClick={load} style={{padding:"6px 12px",background:"#d4af37",color:"#1a2e1a",fontSize:12}}>⟳</button>
+      </div>
+      <div className="card" style={{padding:0,overflowX:"auto",marginBottom:14}}>
+        <table>
+          <thead><tr><th>เวลา (ไทย)</th><th>บัญชี</th><th>ประเภท</th><th style={{textAlign:"right"}}>±</th><th style={{textAlign:"right"}}>คงเหลือ</th><th>match</th></tr></thead>
+          <tbody>
+            {!txs&&<tr><td colSpan="6" style={{textAlign:"center",color:"#7a9b8c"}}>กำลังโหลด…</td></tr>}
+            {txs&&view.length===0&&<tr><td colSpan="6" style={{textAlign:"center",color:"#7a9b8c"}}>ไม่มีรายการ</td></tr>}
+            {view.slice(0,150).map(t=>(
+              <tr key={t.id}>
+                <td style={{whiteSpace:"nowrap",fontSize:11}}>{bkkFmt(t.created_at)}</td>
+                <td style={{fontWeight:700}}>{t.code}</td>
+                <td style={{fontSize:11}}>{t.type}</td>
+                <td style={{textAlign:"right",fontWeight:800,color:t.amount>=0?"#5dcaa5":"#fca5a5"}}>{(t.amount>=0?"+":"")+t.amount.toLocaleString()}</td>
+                <td style={{textAlign:"right"}}>{(t.balance_after||0).toLocaleString()}</td>
+                <td style={{fontSize:10,color:"#7a9b8c"}}>{t.match_id?t.match_id.slice(-6):""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{fontSize:12,fontWeight:800,color:"#fde68a",marginBottom:6}}>รอบล่าสุด (coin_match)</div>
+      <div className="card" style={{padding:0,overflowX:"auto"}}>
+        <table>
+          <thead><tr><th>เวลา (ไทย)</th><th>โต๊ะ</th><th>เกม</th><th>หลักต่อที่นั่ง</th><th style={{textAlign:"right"}}>ต๋ง</th></tr></thead>
+          <tbody>
+            {!matches&&<tr><td colSpan="5" style={{textAlign:"center",color:"#7a9b8c"}}>กำลังโหลด…</td></tr>}
+            {matches&&matches.length===0&&<tr><td colSpan="5" style={{textAlign:"center",color:"#7a9b8c"}}>ยังไม่มีรอบ</td></tr>}
+            {matches&&matches.map(m=>(
+              <tr key={m.id}>
+                <td style={{whiteSpace:"nowrap",fontSize:11}}>{bkkFmt(m.created_at)}</td>
+                <td>×{m.mult}</td>
+                <td>{m.games}</td>
+                <td style={{fontSize:11}}>{(m.seats||[]).map(s=>(s.isBot?"🤖":s.code)+" "+(s.h>0?"+":"")+s.h).join("  ")}</td>
+                <td style={{textAlign:"right"}}>{(m.rake_total||0).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </React.Fragment>
+  );
+}
 function Dash(){
   const [rows,setRows]=useState(null);
   const [err,setErr]=useState("");
@@ -166,6 +271,7 @@ function Dash(){
   const [sort,setSort]=useState({k:"xp",d:-1});
   const [sel,setSel]=useState(null);
   const [loadedAt,setLoadedAt]=useState(null);
+  const [tabView,setTabView]=useState("players");
   async function load(){
     setErr("");
     try{
@@ -209,10 +315,14 @@ function Dash(){
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
         <span style={{fontSize:22}}>🐷</span>
         <div style={{fontSize:16,fontWeight:800,color:"#fde68a",flex:1}}>จับหมู — Admin Dashboard</div>
+        <button onClick={()=>setTabView("players")} style={{padding:"6px 11px",fontSize:12,fontWeight:800,background:tabView==="players"?"#d4af37":"rgba(255,255,255,0.1)",color:tabView==="players"?"#1a2e1a":"#a7f3d0"}}>👥 ผู้เล่น</button>
+        <button onClick={()=>setTabView("coin")} style={{padding:"6px 11px",fontSize:12,fontWeight:800,background:tabView==="coin"?"#d4af37":"rgba(255,255,255,0.1)",color:tabView==="coin"?"#1a2e1a":"#a7f3d0"}}>💰 Coin</button>
         <span style={{fontSize:10,color:"#7a9b8c"}}>{loadedAt?("โหลดเมื่อ "+loadedAt.toLocaleTimeString()):""}</span>
         <button onClick={load} style={{padding:"7px 12px",background:"#d4af37",color:"#1a2e1a",fontSize:12}}>⟳ รีเฟรช</button>
       </div>
       {err&&<div className="card" style={{color:"#fca5a5",fontSize:12,marginBottom:10}}>⚠️ {err}</div>}
+      {tabView==="coin"&&<CoinView/>}
+      {tabView==="players"&&<React.Fragment>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
         <Stat label="ผู้เล่นทั้งหมด" value={rows?rows.length:"…"}/>
         <Stat label="เล่นใน 24 ชม." value={rows?active24:"…"}/>
@@ -249,6 +359,7 @@ function Dash(){
         {rows&&view.length===0&&<div style={{padding:16,fontSize:12,color:"#7a9b8c",textAlign:"center"}}>ไม่พบผู้เล่น</div>}
       </div>
       <div style={{fontSize:10,color:"#7a9b8c",marginTop:8}}>คลิกแถวเพื่อดูรายละเอียด / เปลี่ยนชื่อ / ปรับ XP / รีเซ็ต / ลบ</div>
+      </React.Fragment>}
       {sel&&<Detail p={sel} onClose={()=>setSel(null)} onChanged={load}/>}
     </div>
   );
