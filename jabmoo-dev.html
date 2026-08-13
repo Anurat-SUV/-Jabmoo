@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0813.1-dev";
+  var VER="v0813.2-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1620,6 +1620,7 @@ function pct(n,d){return d>0?Math.round(100*n/d):0;}
 
 function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHall,coins,coinMsg}){
   const [nm,setNm]=useState([(prof&&prof.name)||"","","",""]);
+  const [showCoinHist,setShowCoinHist]=useState(false);
   useEffect(()=>{ // profile name is the source of truth for seat 1
     const n=(prof&&prof.name)||"";
     setNm(m=>m[0]===n?m:[n,m[1],m[2],m[3]]);
@@ -1672,8 +1673,9 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
               <span>⭐ {(prof.xp||0).toLocaleString()} {L?"แต้ม":"pts"}</span>
               <span>{L?"อีก":"next"} {(li.next-(prof.xp||0)).toLocaleString()} → Lv.{li.lv+1}</span>
             </div>
+            {COIN_ON&&showCoinHist&&<CoinHistoryModal code={prof.code} lang={lang} onClose={()=>setShowCoinHist(false)}/>}
             {COIN_ON&&(
-              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,marginBottom:7,background:"rgba(0,0,0,0.25)",borderRadius:7,padding:"4px 8px"}}>
+              <div onClick={()=>setShowCoinHist(true)} title="ดูประวัติ" style={{display:"flex",alignItems:"center",gap:6,fontSize:11,marginBottom:7,background:"rgba(0,0,0,0.25)",borderRadius:7,padding:"4px 8px",cursor:"pointer"}}>
                 <span>💰</span>
                 <span style={{fontWeight:800,color:"#fde68a"}}>{coins!=null?coins.toLocaleString():"..."}</span>
                 <span style={{color:"#7a9b8c",fontSize:9}}>coin</span>
@@ -3084,6 +3086,57 @@ async function coinSettleOffline(totals,humanSeat,code,games){
     return {net:net[humanSeat],rake:rake[humanSeat],h:hs[humanSeat],balance:bal,broke:bal<COIN_BROKE};
   }catch(e){return {error:coinErrMsg(e)};}
 }
+// last N ledger rows for one account (player history view)
+async function coinHistory(code,limit){
+  const c=await profClient();
+  const {data,error}=await c.from("coin_tx").select("id,created_at,amount,balance_after,type,match_id,meta").eq("code",code).order("id",{ascending:false}).limit(limit||30);
+  if(error)throw error;
+  return data||[];
+}
+// rich list: players ranked by coins cache (BOT/HOUSE live in the ledger only, so they are excluded naturally)
+async function coinRichList(limit){
+  const c=await profClient();
+  const {data,error}=await c.from("players").select("code,name,pig_id,coins").not("coins","is",null).order("coins",{ascending:false}).limit(limit||20);
+  if(error)throw error;
+  return data||[];
+}
+const COIN_TYPE_TH={GRANT:"แจกแรกเข้า",REFILL:"เติมรายวัน",SETTLE:"ผลจบรอบ",RAKE:"ต๋ง",ADMIN_ADJ:"แอดมินปรับ"};
+function CoinHistoryModal({code,lang,onClose}){
+  const L=lang==="th";
+  const [rows,setRows]=useState(null);
+  const [err,setErr]=useState("");
+  useEffect(()=>{
+    let live=true;
+    coinHistory(code,30).then(r=>{if(live)setRows(r);}).catch(e=>{if(live)setErr(coinErrMsg(e));});
+    return()=>{live=false;};
+  },[code]);
+  const fmt=ts=>{const d=new Date(new Date(ts).getTime()+7*3600*1000);return d.toISOString().slice(5,16).replace("T"," ").split("-").reverse().join("/");};
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9500,background:"rgba(0,0,0,0.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:14}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:400,maxHeight:"80vh",overflowY:"auto",background:"#0b3d2e",border:"2px solid #d4af37",borderRadius:14,padding:"14px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{fontSize:15,fontWeight:800,color:"#f4d47a"}}>💰 {L?"ประวัติ coin":"Coin history"}</div>
+          <button onClick={onClose} style={{border:"none",background:"rgba(255,255,255,0.15)",color:"#fff",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontWeight:800}}>✕</button>
+        </div>
+        {!rows&&!err&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"กำลังโหลด...":"Loading..."}</div>}
+        {err&&<div style={{color:"#fca5a5",fontSize:11,padding:"1rem 0"}}>⚠️ {err}</div>}
+        {rows&&rows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีรายการ":"No transactions yet"}</div>}
+        {rows&&rows.map(t=>(
+          <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,0.08)",padding:"7px 2px"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{(L?(COIN_TYPE_TH[t.type]||t.type):t.type)}{t.type==="SETTLE"&&t.meta&&t.meta.h!=null?<span style={{color:"#7a9b8c",fontWeight:400}}> · {(t.meta.h>0?"+":"")+t.meta.h} หลัก</span>:null}</div>
+              <div style={{fontSize:9,color:"#7a9b8c"}}>{fmt(t.created_at)}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:13,fontWeight:800,color:t.amount>=0?"#86efac":"#fca5a5"}}>{(t.amount>=0?"+":"")+t.amount.toLocaleString()}</div>
+              <div style={{fontSize:9,color:"#7a9b8c"}}>{L?"คงเหลือ":"bal"} {(t.balance_after||0).toLocaleString()}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // Create a brand-new player row with a unique code (retries on collision)
 async function profCreate(name){
@@ -3705,6 +3758,17 @@ function HallOfFame({prof,lang,onBack}){
     profLeaderboard(100).then(r=>{if(live)setRows(r);}).catch(e=>{if(live)setErr((e&&e.message)||true);});
     return()=>{live=false;};
   },[]);
+  const [coinRows,setCoinRows]=useState(null);
+  const [coinErr,setCoinErr]=useState("");
+  const [sysBal,setSysBal]=useState(null); // {house,bot}
+  useEffect(()=>{
+    if(!COIN_ON||tab!=="coin"||coinRows)return;
+    let live=true;
+    coinRichList(20).then(r=>{if(live)setCoinRows(r);}).catch(e=>{if(live)setCoinErr(coinErrMsg(e));});
+    Promise.all([coinBalance("HOUSE").catch(()=>null),coinBalance("BOT").catch(()=>null)])
+      .then(([house,bot])=>{if(live)setSysBal({house,bot});});
+    return()=>{live=false;};
+  },[tab]);
   const medal=["#d4af37","#c0c0c0","#cd7f32"];
   const podium=rows?rows.slice(0,3):[];
   const rest=rows?rows.slice(3,20):[];
@@ -3729,6 +3793,7 @@ function HallOfFame({prof,lang,onBack}){
         <div style={{display:"flex",gap:6,margin:"4px 0 12px"}}>
           <button onClick={()=>setTab("xp")} style={{flex:1,padding:"7px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:800,fontSize:12,background:tab==="xp"?"#d4af37":"rgba(255,255,255,0.08)",color:tab==="xp"?"#1a2e1a":"#a7f3d0"}}>⭐ {L?"สะสม":"XP"}</button>
           <button onClick={()=>setTab("skill")} style={{flex:1,padding:"7px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:800,fontSize:12,background:tab==="skill"?"#d4af37":"rgba(255,255,255,0.08)",color:tab==="skill"?"#1a2e1a":"#a7f3d0"}}>🎯 {L?"ฝีมือ":"Skill"}</button>
+          {COIN_ON&&<button onClick={()=>setTab("coin")} style={{flex:1,padding:"7px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:800,fontSize:12,background:tab==="coin"?"#d4af37":"rgba(255,255,255,0.08)",color:tab==="coin"?"#1a2e1a":"#a7f3d0"}}>💰 {L?"เศรษฐี":"Rich"}</button>}
         </div>
 
         {!rows&&!err&&<div style={{textAlign:"center",padding:"3rem 0",color:"#7a9b8c"}}>{L?"กำลังโหลด...":"Loading..."}</div>}
@@ -3819,6 +3884,37 @@ function HallOfFame({prof,lang,onBack}){
                   <div style={{fontSize:9,color:"#7a9b8c"}}>{(prof.rk_games||0)>=SKILL_MIN?((L?"ชนะ ":"win ")+pct(prof.wins,prof.rk_games)+"% · "+(mySkillIdx>=0?(L?"อันดับ ":"#")+(mySkillIdx+1):"")):(L?("อีก "+(SKILL_MIN-(prof.rk_games||0))+" เกมถึงเกณฑ์"):((SKILL_MIN-(prof.rk_games||0))+" games to qualify"))}</div>
                 </div>
                 {(prof.rk_games||0)>=SKILL_MIN&&<span style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>{((prof.rank_sum||0)/(prof.rk_games||1)).toFixed(2)}</span>}
+              </div>
+            )}
+          </React.Fragment>
+        )}
+
+        {tab==="coin"&&COIN_ON&&(
+          <React.Fragment>
+            <div style={{textAlign:"center",fontSize:10,color:"#7a9b8c",marginBottom:8}}>{L?"จัดตามยอด coin · โพเดียมหลักดูที่แท็บ ⭐":"Ranked by coins · the podium lives in ⭐"}</div>
+            {coinErr&&<div style={{textAlign:"center",padding:"1.5rem 12px",color:"#fca5a5",fontSize:11}}>⚠️ {coinErr}</div>}
+            {!coinRows&&!coinErr&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"กำลังโหลด...":"Loading..."}</div>}
+            {coinRows&&coinRows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีใครมี coin":"Nobody has coins yet"}</div>}
+            {coinRows&&coinRows.map((p,i)=>(
+              <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:i===0?"#12492f":"#0f3a2b",border:i===0?"1.5px solid #d4af37":"none",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
+                <span style={{fontSize:12,fontWeight:700,color:i===0?"#f4d47a":"#7a9b8c",width:18}}>{i+1}</span>
+                <PigAvatar id={p.pig_id||0} size={26}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
+                </div>
+                <span style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>💰 {(p.coins||0).toLocaleString()}</span>
+              </div>
+            ))}
+            {prof&&coinRows&&(()=>{const mi=coinRows.findIndex(r=>r.code===prof.code);return (
+              <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,background:"#12492f",border:"1.5px solid #d4af37",borderRadius:10,padding:"9px 10px"}}>
+                {mi>=0&&<span style={{fontSize:12,fontWeight:700,color:"#1a2e1a",background:"#d4af37",borderRadius:6,padding:"2px 6px"}}>{mi+1}</span>}
+                <PigAvatar id={prof.pig_id||0} size={28}/>
+                <div style={{flex:1}}><div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{prof.name||"—"} <span style={{color:"#7a9b8c",fontSize:10}}>({L?"คุณ":"You"})</span></div></div>
+                <span style={{fontSize:13,fontWeight:800,color:"#f4d47a"}}>💰 {(coinRows.find(r=>r.code===prof.code)||{coins:0}).coins==null?0:((coinRows.find(r=>r.code===prof.code)||{coins:0}).coins||0).toLocaleString()}</span>
+              </div>);})()}
+            {sysBal&&(sysBal.house!=null||sysBal.bot!=null)&&(
+              <div style={{marginTop:10,textAlign:"center",fontSize:10,color:"#7a9b8c"}}>
+                🏦 HOUSE ({L?"ต๋งสะสม":"rake"}): {(sysBal.house||0).toLocaleString()} · 🤖 BOT ({L?"สุทธิ":"net"}): {(sysBal.bot||0).toLocaleString()}
               </div>
             )}
           </React.Fragment>
