@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0813.4-dev";
+  var VER="v0813.5-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -114,7 +114,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 })();
 </script>
 <script type="text/babel">
-const {useState,useEffect,useRef} = React;
+const {useState,useEffect,useRef,useMemo} = React;
 
 // Unlock audio on first interaction
 let _audioUnlocked=false;
@@ -2426,9 +2426,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // between games like a real table; the source math is the same coinCalc used at
   // settle, so the final chip equals the GameOver table. Offline + COIN_ON only.
   const coinLive=(typeof COIN_ON!=="undefined"&&COIN_ON&&!net)?coinCalc(S.totals):null;
+  const botW=useMemo(()=>coinLive?botWallets():null,[S.totals]); // persistent per-device bot stacks
   const coinDisp=i=>{
     if(!coinLive)return null;
-    const base=i===0?(coins!=null?coins:null):10000;
+    const base=i===0?(coins!=null?coins:null):((botW&&botW[i]!=null)?botW[i]:10000);
     if(base==null)return null;
     return fmtCoin(base+coinLive.net[i]);
   };
@@ -3042,6 +3043,33 @@ function fmtCoin(n){
   else if(a<999500){const k=a/1000;s=(k>=100?Math.round(k):Math.round(k*10)/10)+"K";}
   else {const m=a/1000000;s=(m>=100?Math.round(m):Math.round(m*10)/10)+"M";}
   return (neg?"-":"")+s;
+}
+// Per-device PERSISTENT bot wallets (v0813.5, A's request: bots accumulate real
+// wins/losses across matches instead of resetting — feels natural). DISPLAY layer
+// only: the ledger keeps the single pooled BOT account as the economic truth, and
+// bot top-ups are cosmetic — never printed into coin_tx (would distort inflation
+// analytics). Rule: after each settle a bot below 5,000 auto-tops +5,000 (repeat
+// until ≥5,000 — covers extreme −59-หลัก tails).
+const BOTW_KEY="jm-botcoins-v1";
+const BOT_SEED=10000,BOT_FLOOR=5000,BOT_TOPUP=5000;
+function botWallets(){
+  try{const o=JSON.parse(localStorage.getItem(BOTW_KEY));if(o&&Array.isArray(o.w))return o.w;}catch(e){}
+  return [null,BOT_SEED,BOT_SEED,BOT_SEED];
+}
+function botWalletsApply(totals,humanSeat){
+  if(!COIN_ON)return null;
+  try{
+    const w=botWallets();
+    const cc=coinCalc(totals);
+    for(let i=0;i<4;i++){
+      if(i===humanSeat){w[i]=null;continue;}
+      w[i]=(w[i]==null?BOT_SEED:w[i])+cc.net[i];
+      let guard=0;
+      while(w[i]<BOT_FLOOR&&guard++<5)w[i]+=BOT_TOPUP;
+    }
+    localStorage.setItem(BOTW_KEY,JSON.stringify({v:1,w}));
+    return w;
+  }catch(e){return null;}
 }
 function bkkDay(ts){return new Date((ts?new Date(ts).getTime():Date.now())+7*3600*1000).toISOString().slice(0,10);} // Thai midnight boundary
 function coinErrMsg(e){
@@ -4024,6 +4052,7 @@ function App(){
     const r=await coinSettleOffline(totals,me,coinCode,cfg&&cfg.numGames);
     if(!r)return;
     if(r.error){setCoinMsg(r.error);setCoinResult({error:r.error});return;}
+    botWalletsApply(totals,me); // persistent bot stacks (display layer)
     setCoins(r.balance);
     setCoinResult(r);
     if(r.broke)setCoinMsg(lang==="th"?("เหรียญหมด — พรุ่งนี้หลังเที่ยงคืนรับฟรี "+COIN_REFILL.toLocaleString()):("Broke — free "+COIN_REFILL.toLocaleString()+" after midnight"));
