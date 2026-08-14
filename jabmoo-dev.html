@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0814.2-dev";
+  var VER="v0814.3-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1767,10 +1767,18 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
 }
 
 // ── GAME OVER ──────────────────────────────────────────────────
-function GameOver({players,totals,lang,history,onAgain,onHome,showCoin}){
+function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,getLog}){
   const confetti=React.useMemo(()=>Array(26).fill(0).map((_,i)=>({l:Math.random()*100,d:2.2+Math.random()*2.5,dl:Math.random()*1.6,e:["🎉","✨","🐷","🃏","💰"][i%5]})),[]);
   const L=lang==="th";
   const [showHist,setShowHist]=useState(false);
+  const [logCopied,setLogCopied]=useState(false);
+  const copyLog=()=>{ // full match log survives here until "Play Again" resets it
+    const txt=(getLog&&getLog())||"(ยังไม่มีข้อมูล)";
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      navigator.clipboard.writeText(txt).then(()=>setLogCopied(true)).catch(()=>setLogCopied(true));
+    else setLogCopied(true);
+    setTimeout(()=>setLogCopied(false),1800);
+  };
   const cc=(showCoin&&typeof coinCalc==="function")?coinCalc(totals):null;
   const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i]),coin:cc?cc.net[i]:null,coinRake:cc?cc.rake[i]:0}))].sort((a,b)=>b.score-a.score);
   const COLW=cc?"repeat(4,minmax(46px,auto))":"repeat(3,minmax(48px,auto))";
@@ -1834,9 +1842,14 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin}){
           </React.Fragment>);
         })()}
         {/* History toggle */}
-        <button onClick={()=>setShowHist(h=>!h)} style={{marginTop:"1rem",width:"100%",padding:10,background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,fontSize:13,fontWeight:600,color:"#374151",cursor:"pointer"}}>
-          {showHist?(L?"ซ่อนประวัติ":"Hide history"):(L?"📊 ดูคะแนนแต่ละเกม":"📊 Score History")}
-        </button>
+        <div style={{display:"flex",gap:8,marginTop:"1rem"}}>
+          <button onClick={()=>setShowHist(h=>!h)} style={{flex:1,padding:10,background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,fontSize:13,fontWeight:600,color:"#374151",cursor:"pointer"}}>
+            {showHist?(L?"ซ่อนประวัติ":"Hide history"):(L?"📊 ดูคะแนนแต่ละเกม":"📊 Score History")}
+          </button>
+          {getLog&&<button onClick={copyLog} style={{padding:"10px 14px",background:logCopied?"#dcfce7":"#f9fafb",border:"1px solid "+(logCopied?"#16a34a":"#e5e7eb"),borderRadius:10,fontSize:13,fontWeight:600,color:logCopied?"#16a34a":"#374151",cursor:"pointer",whiteSpace:"nowrap"}}>
+            {logCopied?"✓":(L?"📋 log":"📋 log")}
+          </button>}
+        </div>
 
         {showHist && history && history.length>0 && (
           <div style={{marginTop:10,overflowX:"auto",borderRadius:10,border:"1px solid #e5e7eb"}}>
@@ -1997,7 +2010,7 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail,corner}
   );
 }
 
-function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoins,coins}){
+function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoins,coins,prof}){
   const mySeat=net?net.mySeat:0;
   const isClient=!!(net&&net.role==="client");
   const isHost=!!(net&&net.role==="host");
@@ -2422,7 +2435,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       playApplause();
     }
     const hd=[...histRef.current];
-    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!net} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!net} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
   }
 
   const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2444,6 +2457,25 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     const base=i===0?(coins!=null?coins:null):((botW&&botW[i]!=null)?botW[i]:10000);
     if(base==null)return null;
     return fmtCoin(base+coinLive.net[i]);
+  };
+  // seat plate: Lv + 💰 next to each player at the table (COIN_ON only → prod look unchanged).
+  // Human Lv = XP level; bot Lv = its AI level (all Lv3 today).
+  const seatLv=i=>{
+    const p=pl[i];
+    if(p.isBot)return "Lv."+(p.botLevel||3);
+    if(i===0&&prof)return "Lv."+levelInfo(prof.xp||0).lv;
+    return null;
+  };
+  const SeatChip=({i})=>{
+    if(!coinLive)return null;
+    const lv=seatLv(i),c=coinDisp(i);
+    if(!lv&&!c)return null;
+    return (
+      <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(0,0,0,0.38)",border:"1px solid rgba(212,175,55,0.55)",borderRadius:9,padding:"1px 6px",whiteSpace:"nowrap"}}>
+        {lv&&<span style={{fontSize:8,fontWeight:800,color:"#93c5fd"}}>{lv}</span>}
+        {c&&<span style={{fontSize:9,fontWeight:800,color:"#ffd75e"}}>💰{c}</span>}
+      </span>
+    );
   };
   function ScoreCol(){
     return (
@@ -2801,7 +2833,6 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               <span style={{width:20,height:20,borderRadius:10,background:SEATCOL[i],color:"#fff",fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:i===S.curIdx?"2px solid #d4af37":"2px solid transparent",animation:i===S.curIdx?"goldPulse 1.2s infinite":"none"}}>{(p.name||"?").trim().charAt(0).toUpperCase()}</span>
               <span style={{fontSize:12,fontWeight:700,color:i===S.curIdx?"#d4af37":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}{i===0?" ★":""}</span>
             </div>
-            {coinDisp(i)&&<div style={{fontSize:9,fontWeight:800,color:"#d4af37"}}>💰 {coinDisp(i)}</div>}
             <div style={{fontSize:15,fontWeight:700,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</div>
             <div style={{fontSize:15,fontWeight:700,color:cgS[i]>0?"#0891b2":cgS[i]<0?"#e11d48":"#9ca3af"}}>{cgS[i]>0?"+":""}{cgS[i]}</div>
             <div style={{fontSize:10,color:"#9ca3af"}}>{totalTxt}/{curTxt}</div>
@@ -2811,7 +2842,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
       <div style={{display:"flex",flexDirection:"row",alignItems:"stretch",background:PNL,borderBottom:"1px solid "+BRD,flexShrink:0}}>
         <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 8px 4px"}}>
-          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===2?"#1d4ed8":TXT}}>{pl[2].name}</div>
+          <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:14,fontWeight:700,color:S.curIdx===2?"#1d4ed8":TXT}}>{pl[2].name}</span><SeatChip i={2}/></div>
           <div style={{display:"flex",width:"100%",alignItems:"center",gap:0,justifyContent:"center"}}>
             {S.wonCards[2].filter(c=>isSC(c)).length>0 && <SCP wc={S.wonCards[2]} vert={false}/>}
             <div style={{display:"flex",justifyContent:"center",overflow:"hidden"}}>
@@ -2831,7 +2862,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
       <div style={{flex:1,display:"flex",flexDirection:"row",overflow:"hidden",minHeight:0}}>
         <div style={{width:Math.round(80*Math.min(sf,1.5)),display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 3px",background:PNL,borderRight:"1px solid "+BRD}}>
-          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===3?"#1d4ed8":TXT,textAlign:"center",wordBreak:"break-word",lineHeight:1.2,marginBottom:4}}>{pl[3].name}</div>
+          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===3?"#1d4ed8":TXT,textAlign:"center",wordBreak:"break-word",lineHeight:1.2,marginBottom:2}}>{pl[3].name}</div>
+          <div style={{marginBottom:4}}><SeatChip i={3}/></div>
           <SCP wc={S.wonCards[3]} vert={true}/>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:8}}>
             {S.hands[3].map((_,i)=>(
@@ -2898,7 +2930,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         </div>
 
         <div style={{position:"relative",width:Math.round(80*Math.min(sf,1.5)),display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6px 3px",background:PNL,borderLeft:"1px solid "+BRD}}>
-          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===1?"#1d4ed8":TXT,textAlign:"center",wordBreak:"break-word",lineHeight:1.2,marginBottom:4}}>{pl[1].name}</div>
+          <div style={{fontSize:14,fontWeight:700,color:S.curIdx===1?"#1d4ed8":TXT,textAlign:"center",wordBreak:"break-word",lineHeight:1.2,marginBottom:2}}>{pl[1].name}</div>
+          <div style={{marginBottom:4}}><SeatChip i={1}/></div>
           <SCP wc={S.wonCards[1]} vert={true}/>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:8}}>
             {S.hands[1].map((_,i)=><div key={i} style={{marginTop:i>0?-40:0}}><CB w={30} h={44} rot={90}/></div>)}
@@ -2914,7 +2947,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
       <div style={{background:PNL,borderTop:"1px solid "+BRD,padding:"5px 8px calc(8px + env(safe-area-inset-bottom))",flexShrink:0,boxShadow:"0 -2px 8px rgba(0,0,0,0.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:4}}>
-          <span style={{fontSize:14,fontWeight:700,color:S.curIdx===0?"#1d4ed8":TXT}}>{pl[0].name} ★</span>
+          <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{fontSize:14,fontWeight:700,color:S.curIdx===0?"#1d4ed8":TXT}}>{pl[0].name} ★</span><SeatChip i={0}/></span>
           <SCP wc={S.wonCards[0]} vert={false}/>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
             {S.curIdx===0&&S.phase==="playing" && <span style={{fontSize:13,color:"#059669",fontWeight:700}}>{yourTurn}</span>}
@@ -4119,7 +4152,7 @@ function App(){
       <button onClick={()=>setCoinResult(null)} style={{border:"none",background:"rgba(255,255,255,0.15)",color:"#fff",borderRadius:8,padding:"4px 9px",cursor:"pointer",fontWeight:800}}>✕</button>
     </div>):null;
   if(!cfg)return <React.Fragment>{codeModal}{namePrompt}{resumeModal}{coinBanner}<Setup onStart={c=>{setResumeGame(null);setCfg(c);}} onOnline={()=>setOnline(true)} lang={lang} setLang={setLang} prof={prof} onRename={doRename} onShowCode={()=>setShowCode(true)} onShowHall={()=>setShowHall(true)} coins={coins} coinMsg={coinMsg}/></React.Fragment>;
-  return <React.Fragment>{codeModal}{coinBanner}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>{setCfg(null);setResumeGame(null);try{localStorage.removeItem("jm-savegame-v1");}catch(e){}}} resume={resumeGame} onMatchCoins={COIN_ON?settleCoins:null} coins={coins}/></React.Fragment>;
+  return <React.Fragment>{codeModal}{coinBanner}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={commitStats} onHome={()=>{setCfg(null);setResumeGame(null);try{localStorage.removeItem("jm-savegame-v1");}catch(e){}}} resume={resumeGame} onMatchCoins={COIN_ON?settleCoins:null} coins={coins} prof={prof}/></React.Fragment>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
