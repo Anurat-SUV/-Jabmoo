@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0814.3";
+  var VER="v0814.6";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1622,6 +1622,7 @@ function levelInfo(xp){
 function pct(n,d){return d>0?Math.round(100*n/d):0;}
 
 function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHall,coins,coinMsg}){
+  const [tblIdx,setTblIdx]=useState(0); // offline table tier (bots → bot:true tiers only)
   const [nm,setNm]=useState([(prof&&prof.name)||"","","",""]);
   const [showCoinHist,setShowCoinHist]=useState(false);
   useEffect(()=>{ // profile name is the source of truth for seat 1
@@ -1638,9 +1639,12 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
   const hasName=!!(prof&&prof.name&&prof.name.trim());
   function start(){
     if(!hasName){onShowCode();return;}
+    // validate tier at start (balance may have dropped since selection)
+    const tt=(typeof COIN_TABLES!=="undefined"&&COIN_TABLES[tblIdx])||null;
+    const okT=tt&&tt.bot&&(tt.min===0||(coins!=null&&coins>=tt.min))?tt:null;
     onStart({
       players:nm.map((n,i)=>({name:i===0?((prof&&prof.name)||n||(L?"คุณ":"You")):(n||(isBot[i]?"Bot "+(i+1):"P"+(i+1))),isBot:i===0?false:isBot[i],botLevel:lv[i]})),
-      endMode:em,threshold:th,numGames,showSec
+      endMode:em,threshold:th,numGames,showSec,coinMult:okT?okT.mult:100
     });
   }
   return (
@@ -1683,6 +1687,25 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
                 <span style={{fontWeight:800,color:"#fde68a"}}>{coins!=null?coins.toLocaleString():"..."}</span>
                 <span style={{color:"#7a9b8c",fontSize:9}}>coin</span>
                 {coinMsg&&<span style={{color:coinMsg.indexOf("🎉")>=0?"#86efac":"#fca5a5",fontSize:9,marginLeft:"auto",textAlign:"right"}}>{coinMsg}</span>}
+              </div>
+            )}
+            {COIN_ON&&(
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:7}}>
+                {COIN_TABLES.map((t,i)=>{
+                  const locked=!t.bot||(t.min>0&&(coins==null||coins<t.min));
+                  const sel=tblIdx===i&&!locked;
+                  return (
+                    <button key={i} onClick={()=>{if(!locked)setTblIdx(i);}}
+                      title={!t.bot?(L?"โต๊ะคนล้วน":"humans only"):(t.min?("min "+t.min.toLocaleString()):"")}
+                      style={{flex:"1 0 22%",padding:"4px 2px",borderRadius:7,fontSize:10,fontWeight:800,cursor:locked?"default":"pointer",
+                        border:"1px solid "+(sel?"#d4af37":"rgba(255,255,255,0.15)"),
+                        background:sel?"#d4af37":"rgba(0,0,0,0.25)",
+                        color:sel?"#1a2e1a":(locked?"#4b5f52":"#a7f3d0"),opacity:locked?0.55:1}}>
+                      ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!t.bot?" 👥":" 🔒"):""}
+                      {t.min>0&&<div style={{fontSize:7,fontWeight:600,opacity:0.8}}>{"min "+fmtCoin(t.min)}</div>}
+                    </button>
+                  );
+                })}
               </div>
             )}
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,textAlign:"center"}}>
@@ -1758,7 +1781,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
 }
 
 // ── GAME OVER ──────────────────────────────────────────────────
-function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,getLog}){
+function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,getLog}){
   const confetti=React.useMemo(()=>Array(26).fill(0).map((_,i)=>({l:Math.random()*100,d:2.2+Math.random()*2.5,dl:Math.random()*1.6,e:["🎉","✨","🐷","🃏","💰"][i%5]})),[]);
   const L=lang==="th";
   const [showHist,setShowHist]=useState(false);
@@ -1770,7 +1793,7 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,getLog}){
     else setLogCopied(true);
     setTimeout(()=>setLogCopied(false),1800);
   };
-  const cc=(showCoin&&typeof coinCalc==="function")?coinCalc(totals):null;
+  const cc=(showCoin&&typeof coinCalc==="function")?coinCalc(totals,coinMult):null;
   const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i]),coin:cc?cc.net[i]:null,coinRake:cc?cc.rake[i]:0}))].sort((a,b)=>b.score-a.score);
   const COLW=cc?"repeat(4,minmax(46px,auto))":"repeat(3,minmax(48px,auto))";
   return (
@@ -1829,7 +1852,7 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,getLog}){
               </div>
             </div>
             ))}
-            {cc&&<div style={{textAlign:"right",fontSize:9,color:"#9ca3af",padding:"0 16px",marginTop:-2,marginBottom:6}}>{L?"coin หักต๋ง 15% ฝั่งได้แล้ว · หลัก ×100":"coin after 15% rake · ×100/unit"}</div>}
+            {cc&&<div style={{textAlign:"right",fontSize:9,color:"#9ca3af",padding:"0 16px",marginTop:-2,marginBottom:6}}>{L?("coin หักต๋ง 15% ฝั่งได้แล้ว · หลัก ×"+(coinMult||100)):("coin after 15% rake · ×"+(coinMult||100)+"/unit")}</div>}
           </React.Fragment>);
         })()}
         {/* History toggle */}
@@ -2022,7 +2045,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const wasOverStat=useRef(!!(!net&&resume&&resume.wasOver));
   useEffect(()=>{
     const Sr=sRef.current;if(!Sr||!onGameStats)return;
-    if(wasOverStat.current&&!Sr.gameOver){wasOverStat.current=false;statFired.current={};}
+    if(wasOverStat.current&&!Sr.gameOver){wasOverStat.current=false;statFired.current={};coinFired.current=false;}
     if(Sr.gameOver)wasOverStat.current=true;
     const summary=Sr.phase==="roundSummary"&&Sr.roundScores;
     const over=Sr.gameOver&&Sr.lastRoundScores;
@@ -2043,10 +2066,12 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     // instead of silently losing the game's XP forever.
     const r=onGameStats(xpAdd,deltas);
     if(r&&r.then)r.then(ok=>{if(ok===false)delete statFired.current[key];}).catch(()=>{delete statFired.current[key];});
-    // COIN: settle once per finished OFFLINE match (online settle = later phase)
-    if(matchDone&&!net&&onMatchCoins&&!coinFired.current){
+    // COIN: settle once per finished match. Offline = this device writes everything.
+    // Online (beta) = EACH human device writes only ITS OWN seat row; the host also
+    // writes the pooled BOT row + HOUSE rake. Totals/me here are ABSOLUTE seats.
+    if(matchDone&&onMatchCoins&&!coinFired.current){
       coinFired.current=true;
-      onMatchCoins(Sr.totals,me);
+      onMatchCoins(Sr.totals,me,net?{room:String(net.room||""),isHost:net.role!=="client",players:cfg.players}:null,(cfg&&cfg.coinMult)||COIN_MULT);
     }
   });
   const coinFired=useRef(false);
@@ -2359,6 +2384,20 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     showEmote(mySeat,emoji);hap(15);setEmoteOpen(false);
     if(net&&net.sendEmote)net.sendEmote({seat:mySeat,emoji});
   }
+  // ── PEER COINS (online): each device broadcasts its own {seat,coins,lv};
+  // re-broadcast whenever our balance changes (post-settle) so rematch chips update.
+  const [peerCoins,setPeerCoins]=useState({}); // ABSOLUTE seat -> {coins,lv}
+  useEffect(()=>{
+    if(!net||!net.bindCoin)return;
+    net.bindCoin((p)=>{if(p&&typeof p.seat==="number")setPeerCoins(pc=>({...pc,[p.seat]:{coins:p.coins,lv:p.lv}}));});
+  },[]);
+  useEffect(()=>{
+    if(!net||!net.sendCoin||typeof COIN_ON==="undefined"||!COIN_ON)return;
+    const info={seat:mySeat,coins:(coins!=null?coins:null),lv:(prof?levelInfo(prof.xp||0).lv:null)};
+    net.sendCoin(info);
+    const t=setTimeout(()=>{if(net.sendCoin)net.sendCoin(info);},1500); // resend once vs join-order races
+    return()=>clearTimeout(t);
+  },[coins]);
   useEffect(()=>{
     if(!net||!net.bindEmote)return;
     net.bindEmote((m)=>{if(m&&typeof m.seat==="number")showEmote(m.seat,m.emoji);});
@@ -2426,7 +2465,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       playApplause();
     }
     const hd=[...histRef.current];
-    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!net} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON} coinMult={(cfg&&cfg.coinMult)||COIN_MULT} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
   }
 
   const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2441,11 +2480,15 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // match) + running settle preview from completed games' totals — numbers move
   // between games like a real table; the source math is the same coinCalc used at
   // settle, so the final chip equals the GameOver table. Offline + COIN_ON only.
-  const coinLive=(typeof COIN_ON!=="undefined"&&COIN_ON&&!net)?coinCalc(S.totals):null;
-  const botW=coinLive?botWallets():null; // persistent per-device bot stacks (no hook: this line sits after early returns — a hook here breaks Rules of Hooks and crashes at GameOver)
+  const tblMult=(cfg&&cfg.coinMult)||COIN_MULT;
+  const coinLive=(typeof COIN_ON!=="undefined"&&COIN_ON)?coinCalc(S.totals,tblMult):null; // online too: S is the view-permuted state, so net[0] = this device
+  const botW=(coinLive&&!net)?botWallets():null; // bot stacks are an offline display concept only (no hook: this line sits after early returns — a hook here breaks Rules of Hooks and crashes at GameOver)
   const coinDisp=i=>{
     if(!coinLive)return null;
-    const base=i===0?(coins!=null?coins:null):((botW&&botW[i]!=null)?botW[i]:10000);
+    // online: peers broadcast their balance via gcoin — view index i → ABSOLUTE seat
+    const base=i===0?(coins!=null?coins:null)
+      :(net?(()=>{const pc=peerCoins[(mySeat+i)%4];return pc&&pc.coins!=null?pc.coins:null;})()
+           :((botW&&botW[i]!=null)?botW[i]:10000));
     if(base==null)return null;
     return fmtCoin(base+coinLive.net[i]);
   };
@@ -2455,6 +2498,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     const p=pl[i];
     if(p.isBot)return "Lv."+(p.botLevel||3);
     if(i===0&&prof)return "Lv."+levelInfo(prof.xp||0).lv;
+    if(net){const pc=peerCoins[(mySeat+i)%4];if(pc&&pc.lv!=null)return "Lv."+pc.lv;}
     return null;
   };
   const SeatChip=({i})=>{
@@ -3068,8 +3112,25 @@ const BLANK_STATS={xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0
 const COIN_ON=(typeof window!=="undefined")&&!!window.__JM_DEV;
 const COIN_MULT=100;    // ×100 per หลัก (A 2026-08-13)
 const COIN_RAKE=0.15;   // 15% rake on WINNING seats → HOUSE
-const COIN_GRANT=10000; // first-entry grant (players entering from launch day)
-const COIN_REFILL=5000; // daily top-up when broke
+const COIN_GRANT=10000; // first-entry grant — generous first impression; daily
+// refill (floor 2,000) is where the tightness lives, per A's decision 2026-08-14.
+// Table tiers: min = 50×mult (≈ half of the p99 single-match loss at that table);
+// playing BELOW your bankroll is always allowed (min is a floor, not a ceiling).
+// bot:false tiers are human-only — bot tables capped at ×500 to limit BOT-tray farming.
+const COIN_TABLES=[
+  {mult:100,  min:0,     bot:true},
+  {mult:200,  min:10000, bot:true},
+  {mult:500,  min:25000, bot:true},
+  {mult:1000, min:50000, bot:false},
+  {mult:2000, min:100000,bot:false},
+  {mult:5000, min:250000,bot:false},
+  {mult:10000,min:500000,bot:false}
+];
+const COIN_REFILL=2000; // broke → daily TOP-UP TO this floor (not +flat): the ledger
+// can go negative by design, and a flat +2,000 is smaller than a single bad match
+// (p95 ≈ −2,100) — a deep-negative player would be locked out for days. Topping up
+// to the floor gives everyone exactly one comeback stake per day. REFILL mints coin
+// anyway, so table zero-sum is unaffected.
 const COIN_BROKE=500;   // broke threshold (below = can't meaningfully stake)
 // compact coin display (A's rule): <10,000 full with comma ("8,000"); 10K-999K → "12K"/"12.5K"/"125K"; ≥1M → "1.2M"
 function fmtCoin(n){
@@ -3154,7 +3215,8 @@ async function coinDaily(code){
       const lastTop=await coinLastRow(code,["GRANT","REFILL"]);
       const topDay=lastTop?bkkDay(lastTop.created_at):"";
       if(topDay!==bkkDay()){
-        bal=await coinWrite(code,COIN_REFILL,"REFILL",null,{day:bkkDay()});
+        const amt=COIN_REFILL-bal; // top-up TO the floor (covers negative balances)
+        bal=await coinWrite(code,amt,"REFILL",null,{day:bkkDay(),floor:COIN_REFILL});
         refilled=true;
       }
     }
@@ -3162,32 +3224,69 @@ async function coinDaily(code){
   }catch(e){return {error:coinErrMsg(e)};}
 }
 // pure per-seat coin math from final totals (shared by settle + game-over display)
-function coinCalc(totals){
+function coinCalc(totals,mult){
+  const m=mult||COIN_MULT;
   const hs=totals.map(toH);
   const sum=hs.reduce((a,b)=>a+b,0);
-  const gross=hs.map(h=>(4*h-sum)*COIN_MULT);
+  const gross=hs.map(h=>(4*h-sum)*m);
   const rake=gross.map(g=>g>0?Math.round(g*COIN_RAKE):0);
   const net=gross.map((g,i)=>g-rake[i]);
   return {hs,gross,rake,net};
 }
 // settle an OFFLINE match (1 human + 3 bots → pooled BOT account + HOUSE rake)
-async function coinSettleOffline(totals,humanSeat,code,games){
+async function coinSettleOffline(totals,humanSeat,code,games,mult){
+  mult=mult||COIN_MULT;
   if(!COIN_ON||!code)return null;
   try{
-    const {hs,gross,rake,net}=coinCalc(totals);
+    const {hs,gross,rake,net}=coinCalc(totals,mult);
     const matchId=code+"-"+Date.now();
     const botNet=net.reduce((s,n,i)=>i===humanSeat?s:s+n,0);
     const rakeTotal=rake.reduce((a,b)=>a+b,0);
-    const bal=await coinWrite(code,net[humanSeat],"SETTLE",matchId,{h:hs[humanSeat],gross:gross[humanSeat],rake:rake[humanSeat],mult:COIN_MULT});
+    const bal=await coinWrite(code,net[humanSeat],"SETTLE",matchId,{h:hs[humanSeat],gross:gross[humanSeat],rake:rake[humanSeat],mult});
     await coinWrite("BOT",botNet,"SETTLE",matchId,{seats:hs.filter((_,i)=>i!==humanSeat)});
     if(rakeTotal)await coinWrite("HOUSE",rakeTotal,"RAKE",matchId,null);
     try{
       const c=await profClient();
-      await c.from("coin_match").insert({match_id:matchId,mult:COIN_MULT,games:games||8,
+      await c.from("coin_match").insert({match_id:matchId,mult,games:games||8,
         seats:totals.map((t,i)=>({seat:i,isBot:i!==humanSeat,code:i===humanSeat?code:"BOT",score:t,h:hs[i],gross:gross[i],rake:rake[i],net:net[i]})),
         rake_total:rakeTotal});
     }catch(e){}
     return {net:net[humanSeat],rake:rake[humanSeat],h:hs[humanSeat],balance:bal,broke:bal<COIN_BROKE};
+  }catch(e){return {error:coinErrMsg(e)};}
+}
+// ONLINE beta settle — trust model = same as beta RLS (client writes). Each human
+// device writes ONLY its own seat's SETTLE; the host additionally writes the pooled
+// BOT row (bot-filled seats) + the HOUSE rake row + the coin_match audit row.
+// matchId is per-device (audit groups via meta.room); double-fire is prevented by
+// the per-match coinFired guard — online has no resume, so no re-fire path exists.
+// KNOWN GAP: if a player closes the app before settle fires, their row is missing
+// and the system is not zero-sum for that match. Acceptable for friend-beta only.
+async function coinSettleOnline(totals,me,code,online,games,mult){
+  mult=mult||COIN_MULT;
+  if(!COIN_ON||!code)return null;
+  try{
+    const {hs,gross,rake,net}=coinCalc(totals,mult);
+    const matchId=code+"-"+Date.now();
+    const room=online.room||"";
+    const bal=await coinWrite(code,net[me],"SETTLE",matchId,{h:hs[me],gross:gross[me],rake:rake[me],mult,room,online:true});
+    if(online.isHost){
+      const botSeats=(online.players||[]).map((p,i)=>p&&p.isBot?i:-1).filter(i=>i>=0);
+      if(botSeats.length){
+        const botNet=botSeats.reduce((sum,i)=>sum+net[i],0);
+        await coinWrite("BOT",botNet,"SETTLE",matchId,{room,seats:botSeats,online:true});
+      }
+      const rakeTotal=rake.reduce((a,b)=>a+b,0);
+      if(rakeTotal)await coinWrite("HOUSE",rakeTotal,"RAKE",matchId,{room,online:true});
+      try{
+        const c=await profClient();
+        await c.from("coin_match").insert({match_id:matchId,mult,games:games||8,
+          seats:totals.map((t,i)=>({seat:i,isBot:!!(online.players&&online.players[i]&&online.players[i].isBot),
+            code:i===me?code:((online.players&&online.players[i]&&online.players[i].isBot)?"BOT":"?"),
+            score:t,h:hs[i],gross:gross[i],rake:rake[i],net:net[i]})),
+          rake_total:rakeTotal,room});
+      }catch(e){}
+    }
+    return {net:net[me],rake:rake[me],h:hs[me],balance:bal,broke:bal<COIN_BROKE};
   }catch(e){return {error:coinErrMsg(e)};}
 }
 // last N ledger rows for one account (player history view)
@@ -3436,7 +3535,7 @@ function makeSupabaseTransport({room,selfId,onEvent,url,key,onReady,onError}){
 
 // ── ONLINE: LOBBY ───────────────────────────────────────────────
 function emptySeats(){return [0,1,2,3].map(()=>({type:"empty"}));}
-function OnlineLobby({lang,setLang,onBack,onStartGame}){
+function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,coins,prof}){
   const L=lang==="th";
   const selfId=useRef(rndId()).current;
   const tx=useRef(null);
@@ -3446,6 +3545,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
   const [room,setRoom]=useState("");
   const [hostId,setHostId]=useState("");
   const [seats,setSeats]=useState(emptySeats());
+  const [tableMult,setTableMult]=useState(100); // host-picked coin table (synced via roomState/start)
   const [members,setMembers]=useState({}); // id -> name
   const [chat,setChat]=useState([]); // {id,name,text,ts} or {sys:true,text,ts}
   const [msg,setMsg]=useState("");
@@ -3473,8 +3573,8 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
   useEffect(()=>{if(chatBox.current)chatBox.current.scrollTop=chatBox.current.scrollHeight;},[chat]);
   useEffect(()=>()=>{if(tx.current){tx.current.send("bye",{});tx.current.close();}},[]);
 
-  function broadcastRoomState(seatsX,membersX){
-    if(tx.current)tx.current.send("roomState",{hostId:ref.current.hostId,seats:seatsX,members:membersX});
+  function broadcastRoomState(seatsX,membersX,multX){
+    if(tx.current)tx.current.send("roomState",{hostId:ref.current.hostId,seats:seatsX,members:membersX,coinMult:multX!=null?multX:ref.current.tableMult||100});
   }
   function addSys(text){setChat(c=>[...c,{sys:true,text,ts:Date.now()}]);}
 
@@ -3505,6 +3605,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
       setHostId(m.payload.hostId);
       setSeats(m.payload.seats);
       setMembers(m.payload.members||{});
+      if(m.payload.coinMult){setTableMult(m.payload.coinMult);ref.current.tableMult=m.payload.coinMult;}
       ref.current.hostId=m.payload.hostId;ref.current.seats=m.payload.seats;ref.current.members=m.payload.members||{};
     } else if(m.type==="chat"){
       setChat(c=>[...c,m.payload]);
@@ -3524,17 +3625,22 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
     } else if(m.type==="gemote"){
       if(gameOnState._emoteCb)gameOnState._emoteCb(m.payload);
       if(ref.current.hostId===selfId&&tx.current)tx.current.send("gemote",m.payload);
+    } else if(m.type==="gcoin"){ // peer coin/level info — idempotent per seat, host relays like gchat
+      if(gameOnState._coinCb)gameOnState._coinCb(m.payload);
+      if(ref.current.hostId===selfId&&tx.current)tx.current.send("gcoin",m.payload);
     } else if(m.type==="start"){
       const seatsX=m.payload.seats;
       const meSeat=seatsX.findIndex(s=>s.type==="human"&&s.id===selfId);
       if(meSeat<0)return;
       const chatCbRef={current:null};
-      setGameCfg(seatsToCfg(seatsX));
-      setGameNet({role:"client",mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}},
+      setGameCfg(Object.assign(seatsToCfg(seatsX),{coinMult:m.payload.coinMult||100}));
+      setGameNet({role:"client",room:room,mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}},
         sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
         bindChat:(fn)=>{chatCbRef.current=fn;gameOnState._chatCb=fn;},
         sendEmote:(m)=>{if(tx.current)tx.current.send("gemote",m);},
-        bindEmote:(fn)=>{gameOnState._emoteCb=fn;}});
+        bindEmote:(fn)=>{gameOnState._emoteCb=fn;},
+        sendCoin:(m)=>{if(tx.current)tx.current.send("gcoin",m);},
+        bindCoin:(fn)=>{gameOnState._coinCb=fn;}});
       setStarted(true);
     } else if(m.type==="state"){
       if(gameOnState.current)gameOnState.current(m.payload);else frameBuf.current=m.payload;
@@ -3562,13 +3668,15 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
     if(!sx.every(s=>s.type!=="empty"))return;
     const seatIdx=sx.findIndex(s=>s.type==="human"&&s.id===selfId);
     if(seatIdx<0)return;
-    if(tx.current)tx.current.send("start",{seats:sx,hostId:selfId});
-    setGameCfg(seatsToCfg(sx));
-    setGameNet({role:"host",mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;},
+    if(tx.current)tx.current.send("start",{seats:sx,hostId:selfId,coinMult:tableMult});
+    setGameCfg(Object.assign(seatsToCfg(sx),{coinMult:tableMult}));
+    setGameNet({role:"host",room:room,mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;},
       sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
       bindChat:(fn)=>{gameOnState._chatCb=fn;},
       sendEmote:(m)=>{if(tx.current)tx.current.send("gemote",m);},
-      bindEmote:(fn)=>{gameOnState._emoteCb=fn;}});
+      bindEmote:(fn)=>{gameOnState._emoteCb=fn;},
+      sendCoin:(m)=>{if(tx.current)tx.current.send("gcoin",m);},
+      bindCoin:(fn)=>{gameOnState._coinCb=fn;}});
     setStarted(true);
   }
 
@@ -3624,7 +3732,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
   const mySeatIdx=seats.findIndex(s=>s.type==="human"&&s.id===selfId);
 
   if(started&&gameCfg&&gameNet)
-    return <Game cfg={gameCfg} lang={lang} setLang={setLang} net={gameNet} onExit={()=>setStarted(false)}/>;
+    return <Game cfg={gameCfg} lang={lang} setLang={setLang} net={gameNet} onGameStats={onGameStats} onMatchCoins={onMatchCoins} coins={coins} prof={prof} onExit={()=>setStarted(false)}/>;
 
   if(phase==="entry"){
     return (
@@ -3727,6 +3835,31 @@ function OnlineLobby({lang,setLang,onBack,onStartGame}){
           <button onClick={sendChat} style={{...OBTN2,width:"auto",padding:"0 16px"}}>{L?"ส่ง":"Send"}</button>
         </div>
 
+        {COIN_ON&&(
+          <div style={{marginBottom:8}}>
+            <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>{L?"โต๊ะ (ตัวคูณ/หลัก)":"Table (per unit)"}{!isHost&&(L?" — โฮสต์เป็นคนเลือก":" — host picks")}</div>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              {COIN_TABLES.map((t,i)=>{
+                const hasBot=seats.some(x=>x.type==="bot");
+                const locked=isHost&&((hasBot&&!t.bot)||(t.min>0&&(coins==null||coins<t.min)));
+                const sel=tableMult===t.mult;
+                return (
+                  <button key={i} disabled={!isHost||locked}
+                    onClick={()=>{if(!isHost||locked)return;setTableMult(t.mult);ref.current.tableMult=t.mult;broadcastRoomState(ref.current.seats,ref.current.members,t.mult);}}
+                    title={!t.bot?(L?"โต๊ะคนล้วน":"humans only"):(t.min?("min "+t.min.toLocaleString()):"")}
+                    style={{flex:"1 0 22%",padding:"4px 2px",borderRadius:7,fontSize:10,fontWeight:800,
+                      cursor:(isHost&&!locked)?"pointer":"default",
+                      border:"1.5px solid "+(sel?"#2563eb":"#e5e7eb"),
+                      background:sel?"#2563eb":"#f9fafb",
+                      color:sel?"#fff":(locked?"#c7ccd4":"#374151"),opacity:locked?0.6:1}}>
+                    ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!t.bot?" 👥":" 🔒"):""}
+                    {t.min>0&&<div style={{fontSize:7,fontWeight:600,opacity:0.8}}>{"min "+fmtCoin(t.min)}</div>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {isHost
           ? <button onClick={startGame} disabled={!canStart} style={{...OBTN,opacity:canStart?1:0.5,cursor:canStart?"pointer":"default"}}>{L?"เริ่มเกม!":"Start Game!"}{allFilled?"":" ("+(L?"ที่นั่งยังไม่เต็ม":"seats not full")+")"}</button>
           : <div style={{textAlign:"center",fontSize:13,color:"#6b7280",padding:10}}>{L?"รอโฮสต์เริ่มเกม…":"Waiting for host to start…"}</div>}
@@ -4078,17 +4211,19 @@ function App(){
       if(!live||!r)return;
       if(r.error){setCoinMsg(r.error);return;}
       setCoins(r.balance);
-      if(r.refilled)setCoinMsg(lang==="th"?("เติมให้แล้ว +"+COIN_REFILL.toLocaleString()+" 🎉"):("Refilled +"+COIN_REFILL.toLocaleString()));
+      if(r.refilled)setCoinMsg(lang==="th"?("เติมให้เป็น "+COIN_REFILL.toLocaleString()+" แล้ว 🎉"):("Topped up to "+COIN_REFILL.toLocaleString()));
       else if(r.broke)setCoinMsg(lang==="th"?("เหรียญหมด — พรุ่งนี้หลังเที่ยงคืนรับฟรี "+COIN_REFILL.toLocaleString()):("Broke — free "+COIN_REFILL.toLocaleString()+" after midnight"));
       else setCoinMsg("");
     });
     return()=>{live=false;};
   },[coinCode]);
-  async function settleCoins(totals,me){
-    const r=await coinSettleOffline(totals,me,coinCode,cfg&&cfg.numGames);
+  async function settleCoins(totals,me,online,mult){
+    const r=online
+      ?await coinSettleOnline(totals,me,coinCode,online,(cfg&&cfg.numGames)||8,mult)
+      :await coinSettleOffline(totals,me,coinCode,cfg&&cfg.numGames,mult);
     if(!r)return;
     if(r.error){setCoinMsg(r.error);setCoinResult({error:r.error});return;}
-    botWalletsApply(totals,me); // persistent bot stacks (display layer)
+    if(!online)botWalletsApply(totals,me); // bot stacks are an offline display concept only
     setCoins(r.balance);
     setCoinResult(r);
     if(r.broke)setCoinMsg(lang==="th"?("เหรียญหมด — พรุ่งนี้หลังเที่ยงคืนรับฟรี "+COIN_REFILL.toLocaleString()):("Broke — free "+COIN_REFILL.toLocaleString()+" after midnight"));
@@ -4126,7 +4261,7 @@ function App(){
   const codeModal=showCode?<CodeModal prof={prof} lang={lang} onClose={()=>{setShowCode(false);setNewCode(false);}} onRestore={doRestore} onRename={doRename} onSetPig={doSetPig}/>:null;
 
   if(showHall)return <React.Fragment>{codeModal}{namePrompt}<HallOfFame prof={prof} lang={lang} onBack={()=>setShowHall(false)}/></React.Fragment>;
-  if(online)return <React.Fragment>{codeModal}{namePrompt}<OnlineLobby lang={lang} setLang={setLang} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/></React.Fragment>;
+  if(online)return <React.Fragment>{codeModal}{namePrompt}<OnlineLobby lang={lang} setLang={setLang} onGameStats={commitStats} onMatchCoins={COIN_ON?settleCoins:null} coins={coins} prof={prof} onBack={()=>setOnline(false)} onStartGame={(lobby)=>{const seatStr=lobby.seats.map((s,i)=>(i+1)+":"+(s.type==="human"?s.name:s.type==="bot"?"Bot":"-")).join("   ");alert((lang==="th"?"พร้อมเริ่ม! ขั้นถัดไปจะต่อเกมจริงผ่านเน็ตเวิร์ก\nที่นั่ง  ":"Ready! Next step wires the live networked game\nSeats  ")+seatStr);}}/></React.Fragment>;
   const coinBanner=(COIN_ON&&coinResult)?(
     <div style={{position:"fixed",left:8,right:8,bottom:8,zIndex:9000,background:"#0b3d2e",border:"2px solid #d4af37",borderRadius:12,padding:"10px 12px",color:"#fff",display:"flex",alignItems:"center",gap:10,boxShadow:"0 6px 24px rgba(0,0,0,0.5)"}}>
       <span style={{fontSize:20}}>💰</span>
