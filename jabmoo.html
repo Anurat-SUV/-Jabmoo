@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0814.1";
+  var VER="v0814.2";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -2429,7 +2429,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // between games like a real table; the source math is the same coinCalc used at
   // settle, so the final chip equals the GameOver table. Offline + COIN_ON only.
   const coinLive=(typeof COIN_ON!=="undefined"&&COIN_ON&&!net)?coinCalc(S.totals):null;
-  const botW=useMemo(()=>coinLive?botWallets():null,[S.totals]); // persistent per-device bot stacks
+  const botW=coinLive?botWallets():null; // persistent per-device bot stacks (no hook: this line sits after early returns — a hook here breaks Rules of Hooks and crashes at GameOver)
   const coinDisp=i=>{
     if(!coinLive)return null;
     const base=i===0?(coins!=null?coins:null):((botW&&botW[i]!=null)?botW[i]:10000);
