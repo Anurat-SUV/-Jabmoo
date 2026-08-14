@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0814.6";
+  var VER="v0814.7";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -3109,7 +3109,7 @@ const BLANK_STATS={xp:0,games:0,jd_won:0,jd_seen:0,qs_dodged:0,qs_seen:0,slams:0
 // a cache. System accounts: 'BOT' (one pooled dealer tray) + 'HOUSE' (rake sink).
 // Every match nets to zero across all accounts (double-entry). Prod launch = flip
 // COIN_ON after resetting the coin tables.
-const COIN_ON=(typeof window!=="undefined")&&!!window.__JM_DEV;
+const COIN_ON=true; // PROD LIVE since v0814.7 (launch day) — dev copy still gates via __JM_DEV
 const COIN_MULT=100;    // ×100 per หลัก (A 2026-08-13)
 const COIN_RAKE=0.15;   // 15% rake on WINNING seats → HOUSE
 const COIN_GRANT=10000; // first-entry grant — generous first impression; daily
