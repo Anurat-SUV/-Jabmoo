@@ -13,9 +13,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>จับหมู</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <meta name="theme-color" content="#0b1f12">
 <link rel="manifest" href="manifest-dev.json">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0813.5-dev";
+  var VER="v0814.1-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -60,7 +60,12 @@ input::placeholder{color:#9ca3af;opacity:1;}
     }
     document.getElementById("jm-err-msg").textContent="ERROR ("+VER+"): "+msg;
   }
-  window.addEventListener("error",function(e){show((e.message||"?")+(e.lineno?" @line "+e.lineno:""));});
+  window.addEventListener("error",function(e){
+    var m=(e.message||"?")+(e.lineno?" @line "+e.lineno:"");
+    if(e.filename)m+="\n["+e.filename.split("/").pop()+"]";
+    if(e.error&&e.error.stack)m+="\n"+String(e.error.stack).split("\n").slice(0,4).join("\n");
+    show(m);
+  });
   window.addEventListener("unhandledrejection",function(e){show("promise: "+((e.reason&&e.reason.message)||e.reason||"?"));});
 
   // ── UPDATE CHECK ─────────────────────────────────────────────
@@ -106,8 +111,15 @@ input::placeholder{color:#9ca3af;opacity:1;}
     if(document.body)document.body.appendChild(b);
     else window.addEventListener("load",function(){document.body.appendChild(b);});
   }
-  if(document.readyState==="complete")checkUpdate();
-  else window.addEventListener("load",function(){setTimeout(checkUpdate,1500);});
+  function cdnGuard(){
+    var miss=[];
+    if(!window.React)miss.push("React");
+    if(!window.ReactDOM)miss.push("ReactDOM");
+    if(!window.Babel)miss.push("Babel");
+    if(miss.length)show("\u0E42\u0E2B\u0E25\u0E14\u0E2A\u0E04\u0E23\u0E34\u0E1B\u0E15\u0E4C\u0E08\u0E32\u0E01\u0E40\u0E19\u0E47\u0E15\u0E44\u0E21\u0E48\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08 ("+miss.join(", ")+") \u2014 \u0E40\u0E0A\u0E47\u0E04\u0E2A\u0E31\u0E0D\u0E0D\u0E32\u0E13\u0E40\u0E19\u0E47\u0E15\u0E41\u0E25\u0E49\u0E27\u0E01\u0E14\u0E40\u0E23\u0E34\u0E48\u0E21\u0E43\u0E2B\u0E21\u0E48");
+  }
+  if(document.readyState==="complete"){cdnGuard();checkUpdate();}
+  else window.addEventListener("load",function(){cdnGuard();setTimeout(checkUpdate,1500);});
   document.addEventListener("visibilitychange",function(){
     if(document.visibilityState==="visible")checkUpdate();
   });
