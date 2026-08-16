@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0815.5-dev";
+  var VER="v0815.6-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1670,7 +1670,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
                {name:"ครูหมู 1",isBot:true,botLevel:1},
                {name:"ครูหมู 2",isBot:true,botLevel:1},
                {name:"ครูหมู 3",isBot:true,botLevel:1}],
-      endMode:"8games",threshold:1000,numGames:1,showSec:false,coinMult:100,practice:true
+      endMode:"8games",threshold:1000,numGames:1,showSec:3,coinMult:100,practice:true
     });
   }
   return (
@@ -3086,13 +3086,13 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               const tip=!ls?"คุณนำตองนี้ — ลงใบไหนก็ได้ ลองนำดอกที่ปลอดภัย":(mustFollow?("ต้องลงดอก "+ls+" ตามใบนำ — ถ้าไม่อยากกิน ลงใบเล็ก"):("ไม่มีดอก "+ls+" — ทิ้งใบอันตราย (♠Q, ♥ใหญ่) ได้เลย!"));
               return (
                 <span style={{display:"inline-flex",alignItems:"center",gap:6,marginLeft:6}}>
-                  <span style={{fontSize:10,color:"#7c3aed",background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.35)",borderRadius:7,padding:"2px 7px",fontWeight:700}}>{coachHint?("💡 "+coachHint):("🎓 "+tip)}</span>
+                  <span style={{fontSize:12.5,color:"#3b2a00",background:"#fde68a",border:"1.5px solid #f59e0b",borderRadius:8,padding:"3px 10px",fontWeight:800,boxShadow:"0 1px 4px rgba(0,0,0,0.35)"}}>{coachHint?("💡 "+coachHint):("🎓 "+tip)}</span>
                   <button onClick={()=>{
                     try{
                       const card=botPlayMC(S.hands[0],ls,S.trick,S.wonCards,S.totals,0,S.playLog,S.voids,300);
                       if(card)setCoachHint("ลอง "+card.rank+card.suit+" ดูสิ");
                     }catch(e){}
-                  }} style={{fontSize:10,fontWeight:800,padding:"2px 9px",borderRadius:7,border:"1.5px solid #7c3aed",background:"#7c3aed",color:"#fff",cursor:"pointer"}}>💡 แนะนำ</button>
+                  }} style={{fontSize:12.5,fontWeight:800,padding:"3px 12px",borderRadius:8,border:"1.5px solid #fff",background:"#7c3aed",color:"#fff",cursor:"pointer",boxShadow:"0 1px 4px rgba(0,0,0,0.35)"}}>💡 แนะนำ</button>
                 </span>
               );
             })()}
