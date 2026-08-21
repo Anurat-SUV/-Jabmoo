@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0815.9-dev";
+  var VER="v0821.1-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1820,7 +1820,8 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
           </div>
         );})()}
 
-        {[0,1,2,3].map(i=>(
+        {/* LANDING_V2: seat rows hidden — seat 1 = profile name (shown above), seats 2-4 always bots; friends get named in the online lobby */}
+        {!LANDING_V2&&[0,1,2,3].map(i=>(
           <div key={i} style={{background:"#f9fafb",borderRadius:10,padding:"0.6rem",marginBottom:"0.4rem",border:"1px solid #e5e7eb",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{fontSize:14,color:"#9ca3af",fontWeight:700,width:18}}>{i+1}</span>
             <input value={nm[i]} onChange={e=>{const n=[...nm];n[i]=e.target.value;setNm(n);}}
@@ -1864,7 +1865,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
         </div>
 
         <button onClick={start} style={{width:"100%",padding:15,background:hasName?(LANDING_V2?"linear-gradient(180deg,#fcd34d,#f59e0b 55%,#b45309)":"linear-gradient(135deg,#1e3a5f,#2563eb)"):"#9ca3af",border:LANDING_V2?"2px solid #fff7cc":"none",borderRadius:LANDING_V2?999:10,fontSize:LANDING_V2?18:17,fontWeight:LANDING_V2?900:700,color:LANDING_V2&&hasName?"#3a2500":"#fff",cursor:"pointer",fontFamily:"Georgia,serif",boxShadow:LANDING_V2?"0 4px 14px rgba(245,158,11,0.45)":"none",letterSpacing:LANDING_V2?0.5:0}}>
-          {hasName?(LANDING_V2?"▶ ":"")+(L?"เริ่มเกม!":"Start Game!"):(L?"👤 ใส่ชื่อก่อนเริ่มเล่น":"👤 Set your name first")}
+          {hasName?(LANDING_V2?"▶ "+(L?"เริ่มเล่นกับ BOT":"Play vs BOTS"):(L?"เริ่มเกม!":"Start Game!")):(L?"👤 ใส่ชื่อก่อนเริ่มเล่น":"👤 Set your name first")}
         </button>
         <button onClick={()=>{if(!hasName){onShowCode();return;}onOnline();}} style={{width:"100%",marginTop:10,padding:13,background:"#fff",border:"2px solid #3b82f6",borderRadius:10,fontSize:15,fontWeight:700,color:"#2563eb",cursor:"pointer"}}>
           🌐 {L?"เล่นกับเพื่อน (ออนไลน์)":"Play with friends (online)"}
