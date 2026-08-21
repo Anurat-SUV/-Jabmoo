@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0815.6-dev";
+  var VER="v0815.7-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3576,7 +3576,7 @@ async function profSetPig(code,pigId){
 }
 async function profLeaderboard(limit){
   const c=await profClient();
-  const {data,error}=await c.from("players").select("code,name,xp,games,wins,rank_sum,rk_games,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id").order("xp",{ascending:false}).limit(limit||100);
+  const {data,error}=await c.from("players").select("code,name,xp,games,wins,rank_sum,rk_games,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id").not("name","is",null).neq("name","").order("xp",{ascending:false}).limit(limit||100);
   if(error)throw new Error(error.message||"query failed"); // surface DB errors — never show an empty hall silently
   return data||[];
 }
@@ -4404,7 +4404,12 @@ function App(){
         setProf(local);
         try{const fresh=await profFetch(local.code);if(live&&fresh)setProf(fresh);}catch(e){}
       }else{
-        try{const p=await profCreate("");if(live){setProf(p);setNewCode(true);setShowCode(true);}}catch(e){}
+        // LOCAL-ONLY provisional profile: no server row until the player saves a name.
+        // (The old profCreate("") wrote a nameless row on every fresh open — litter, and
+        // on stale pre-v0814.8 clients those even got a 10,000 GRANT.)
+        const p={code:genCode(),name:"",...BLANK_STATS,_local:true};
+        profSaveLocal(p);
+        if(live){setProf(p);setNewCode(true);setShowCode(true);}
       }
     })();
     return()=>{live=false;};
@@ -4452,6 +4457,18 @@ function App(){
   }
   async function doRename(name){
     const p=profLocal();if(!p||!p.code)return;
+    if(p._local){ // first save: create the server row now, WITH the name
+      try{
+        const c=await profClient();
+        const row={code:p.code,name:name||"",...BLANK_STATS};
+        const {error}=await c.from("players").insert(row);
+        if(!error){profSaveLocal(row);setProf(row);return;}
+        if(error.code==="23505"||/duplicate/i.test(error.message||"")){
+          const fresh=await profCreate(name);setProf(fresh);return; // code collided → new code
+        }
+        throw error;
+      }catch(e){return;}
+    }
     const updated=await profRename(p.code,name);
     if(updated)setProf(updated);
   }
