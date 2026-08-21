@@ -44,7 +44,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0815.7";
+  var VER="v0815.9";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1209,11 +1209,35 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
   }
   // HARD RULE: a loss-holder (pen ≤ −100 piled) never LEADS 10♣ — ducking opponents
   // send the ×2 straight back to double the damage.
+  // WOUNDED HIGH-CLUB LEAD BAN (MC, v0815.8 — A's call, G2 T2): same loss-holder also
+  // never LEADS any club ≥ 10 while 10♣ is live and not ours. A boss club (e.g. A♣)
+  // wins for sure, and every opponent simply FOLLOWS with 10♣ to double our wounds —
+  // rollouts are too noisy to price this reliably, so prune before sampling.
+  // (Mirrors the heuristic lead filter; reverse rule — feeding 10♣ onto a wounded
+  // certain winner — already exists in botPlay's club-follow logic.)
   if(!tc.length&&vld.length>1){
     const myPen=(allWon&&allWon[myIdx]?allWon[myIdx]:[]).reduce((t,c)=>t+Math.min(0,cSc(c)),0);
     if(myPen<=-100){
-      const pr=vld.filter(c=>!(c.suit==="♣"&&c.rank==="10"));
+      const tenCLiveM=!playLog.some(e=>e.card.suit==="♣"&&e.card.rank==="10")&&!hand.some(c=>c.suit==="♣"&&c.rank==="10");
+      const pr=vld.filter(c=>!(c.suit==="♣"&&(c.rank==="10"||(tenCLiveM&&RO[c.rank]>=RO["10"]))));
       if(pr.length)vld=pr;
+    }
+  }
+  // J♦ FOLLOW DISCIPLINE (MC, v0815.9 — A's call, G1 T3): following ♦ with J♦ and
+  // another diamond in hand, NEVER spend J♦ unless it is GUARANTEED to win here:
+  // current winning ♦ below J, and (everyone still to act is ♦-void, or no unseen ♦
+  // outranks J). Rollouts misprice the behind Q/K/A risk (deal noise), and a lost
+  // J♦ hands +100 to an opponent. Mirrors the heuristic's follow logic exactly.
+  if(ls==="♦"&&tc.length&&vld.length>1&&vld.some(c=>c.suit==="♦"&&c.rank==="J")){
+    const curMaxD=tc.filter(t=>t.card.suit==="♦").reduce((m,t)=>Math.max(m,RO[t.card.rank]),0);
+    const behindD=[1,2,3].map(i=>(myIdx+i)%4).filter(sx=>!tc.some(t=>t.playerIdx===sx));
+    const behindAllVoidD=behindD.every(sx=>voids[sx]&&voids[sx]["♦"]);
+    const seenAboveJ=r=>playLog.some(e=>e.card.suit==="♦"&&e.card.rank===r)||tc.some(t=>t.card.suit==="♦"&&t.card.rank===r)||hand.some(c=>c.suit==="♦"&&c.rank===r);
+    const jBossD=["Q","K","A"].every(seenAboveJ);
+    const jGuaranteed=curMaxD<RO["J"]&&(behindD.length===0||behindAllVoidD||jBossD);
+    if(!jGuaranteed){
+      const prJ=vld.filter(c=>!(c.suit==="♦"&&c.rank==="J"));
+      if(prJ.length)vld=prJ;
     }
   }
   // HARD RULE: never gift 10♣ (×2) or J♦ (+100) as a losing card into a trick
