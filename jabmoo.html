@@ -29,6 +29,12 @@ body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(e
 @keyframes confettiFall{0%{transform:translateY(-10vh) rotate(0);opacity:1;}100%{transform:translateY(110vh) rotate(720deg);opacity:0.6;}}
 @keyframes goldPulse{0%,100%{box-shadow:0 0 6px 1px rgba(212,175,55,0.55);}50%{box-shadow:0 0 14px 4px rgba(212,175,55,0.95);}}
 .confetti{position:fixed;top:0;font-size:20px;pointer-events:none;animation:confettiFall linear forwards;z-index:500;}
+@keyframes fwShot{0%{transform:translateY(0) scale(1);opacity:1;}100%{transform:translateY(-52vh) scale(0.8);opacity:1;}}
+@keyframes fwSpark{0%{transform:translate(0,0) scale(1);opacity:1;}70%{opacity:1;}100%{transform:translate(var(--dx),var(--dy)) scale(0.4);opacity:0;}}
+@keyframes fwFlash{0%{opacity:0.55;}100%{opacity:0;}}
+.fwShot{position:fixed;bottom:0;width:5px;height:14px;border-radius:3px;pointer-events:none;animation:fwShot 0.75s ease-out forwards;z-index:400;}
+.fwSpark{position:fixed;width:7px;height:7px;border-radius:50%;pointer-events:none;animation:fwSpark 1.25s ease-out forwards;z-index:401;}
+.fwFlash{position:fixed;inset:0;background:radial-gradient(circle at 50% 38%,rgba(255,240,180,0.9),transparent 60%);pointer-events:none;animation:fwFlash 0.6s ease-out forwards;z-index:399;}
 .vh100{height:100vh;height:100dvh;padding-top:env(safe-area-inset-top);box-sizing:border-box;}
 input,select,button{font-family:inherit;}
 select{appearance:auto;}
@@ -44,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.1";
+  var VER="v0821.3";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -419,6 +425,77 @@ function playApplause(){
 
 // ── CARD COUNTING HELPERS ────────────────────────────────────────
 // Count how many cards of each suit have been played (from playLog)
+// COUNTDOWN BEEP (v0821.3, A's ask): with friends, every visible countdown number
+// (<=15s, my turn only) ticks audibly; pitch+level step up in the last 5s.
+function playCountBeep(n){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    if(ctx.state==="suspended")ctx.resume();
+    const urgent=n<=5;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type=urgent?"square":"sine";
+    o.frequency.setValueAtTime(urgent?880+ (5-n)*90 :620,ctx.currentTime);
+    g.gain.setValueAtTime(0.0001,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(urgent?0.22:0.12,ctx.currentTime+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+(urgent?0.16:0.09));
+    o.connect(g);g.connect(ctx.destination);
+    o.start();o.stop(ctx.currentTime+0.2);
+    if(urgent&&navigator.vibrate)navigator.vibrate(30);
+  }catch(e){}
+}
+// SUPER SLAM FANFARE (v0821.3): firework booms + rising triumph arpeggio + shimmer, ~4s.
+function playSuperFanfare(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    if(ctx.state==="suspended")ctx.resume();
+    const sr=ctx.sampleRate,t0=ctx.currentTime;
+    // firework booms: filtered noise bursts
+    for(let k=0;k<6;k++){
+      const at=t0+0.15+k*0.55+Math.random()*0.15;
+      const dur=0.5;
+      const buf=ctx.createBuffer(1,Math.floor(sr*dur),sr);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++){const t=i/sr;d[i]=(Math.random()*2-1)*Math.exp(-t*9)*0.8;}
+      const src=ctx.createBufferSource();src.buffer=buf;
+      const f=ctx.createBiquadFilter();f.type="lowpass";f.frequency.value=380+Math.random()*500;
+      const g=ctx.createGain();g.gain.value=0.5;
+      src.connect(f);f.connect(g);g.connect(ctx.destination);
+      src.start(at);
+    }
+    // triumph arpeggio C-E-G-C-E-G-C (major, rising) then held chord
+    const seq=[261.6,329.6,392.0,523.3,659.3,784.0,1046.5];
+    seq.forEach((fr,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type="triangle";o.frequency.value=fr;
+      const at=t0+0.1+i*0.16;
+      g.gain.setValueAtTime(0.0001,at);
+      g.gain.exponentialRampToValueAtTime(0.2,at+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001,at+(i===seq.length-1?2.4:0.34));
+      o.connect(g);g.connect(ctx.destination);o.start(at);o.stop(at+2.6);
+    });
+    // final chord (C major, 3 notes) under the last note
+    [523.3,659.3,784.0].forEach(fr=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type="sawtooth";o.frequency.value=fr;
+      const at=t0+0.1+6*0.16;
+      g.gain.setValueAtTime(0.0001,at);
+      g.gain.exponentialRampToValueAtTime(0.07,at+0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001,at+2.4);
+      o.connect(g);g.connect(ctx.destination);o.start(at);o.stop(at+2.5);
+    });
+    // shimmer: high sparkle pings
+    for(let k=0;k<14;k++){
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type="sine";o.frequency.value=1500+Math.random()*2500;
+      const at=t0+0.4+Math.random()*3.0;
+      g.gain.setValueAtTime(0.0001,at);
+      g.gain.exponentialRampToValueAtTime(0.06,at+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001,at+0.25);
+      o.connect(g);g.connect(ctx.destination);o.start(at);o.stop(at+0.3);
+    }
+    if(navigator.vibrate)navigator.vibrate([60,40,60,40,120]);
+  }catch(e){}
+}
 function suitsPlayed(playLog){
   const cnt={"♠":0,"♥":0,"♦":0,"♣":0};
   for(const e of playLog)cnt[e.card.suit]++;
@@ -1552,6 +1629,34 @@ function SCP({wc,vert}){
   );
 }
 
+// FIREWORKS overlay (v0821.3) — super slam celebration. Pure CSS bursts, ~5s, no cleanup
+// needed beyond unmount (animations are forwards-fill on fixed elements inside this node).
+function Fireworks(){
+  const bursts=React.useMemo(()=>Array(7).fill(0).map((_,b)=>({
+    x:12+Math.random()*76, y:14+Math.random()*38, delay:b*0.55+Math.random()*0.2,
+    hue:[0,45,120,200,280,330][b%6],
+    sparks:Array(14).fill(0).map((_,i)=>{const ang=(i/14)*Math.PI*2;const r=52+Math.random()*46;
+      return {dx:Math.cos(ang)*r,dy:Math.sin(ang)*r};})
+  })),[]);
+  return (
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:400}}>
+      <div className="fwFlash"/>
+      {bursts.map((bu,b)=>(
+        <React.Fragment key={b}>
+          <span className="fwShot" style={{left:bu.x+"%",background:"hsl("+bu.hue+",90%,70%)",animationDelay:bu.delay+"s"}}/>
+          {bu.sparks.map((sp,i)=>(
+            <span key={i} className="fwSpark" style={{left:bu.x+"%",top:bu.y+"%",
+              background:"hsl("+(bu.hue+i*4)+",95%,"+(58+Math.random()*20)+"%)",
+              boxShadow:"0 0 8px hsl("+bu.hue+",95%,70%)",
+              "--dx":sp.dx+"px","--dy":sp.dy+"px",
+              animationDelay:(bu.delay+0.72)+"s"}}/>
+          ))}
+        </React.Fragment>
+      ))}
+      <div style={{position:"fixed",top:"30%",left:"50%",transform:"translateX(-50%)",fontSize:40,fontWeight:900,color:"#fde68a",textShadow:"0 0 18px rgba(253,230,138,0.9),0 2px 4px rgba(0,0,0,0.6)",animation:"confettiFall 0s"}}>SUPER SLAM! 788</div>
+    </div>
+  );
+}
 function Toast({msg,cards}){
   if(!msg)return null;
   return (
@@ -2518,6 +2623,19 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // the human — A wants it off (can step away mid-game). Online keeps the timer.
   const soloVsBots=!net&&cfg&&cfg.players&&cfg.players.slice(1).every(p=>p.isBot);
   const timerOff=SOLO_TIMER_OFF&&soloVsBots;
+  // SUPER SLAM FIREWORKS (v0821.3): any seat scoring exactly 788 in the game that just
+  // ended (roundSummary or final gameOver) → fireworks + fanfare, once per game number.
+  const [fw,setFw]=useState(false);
+  const fwKey=useRef(-1);
+  useEffect(()=>{
+    const Sr=sRef.current;if(!Sr)return;
+    const rs=(Sr.phase==="roundSummary"&&Sr.roundScores)||(Sr.gameOver&&Sr.lastRoundScores);
+    if(!rs||!rs.some(x=>x===788))return;
+    if(fwKey.current===Sr.gameNum)return;
+    fwKey.current=Sr.gameNum;
+    setFw(true);playSuperFanfare();
+    setTimeout(()=>setFw(false),5500);
+  });
   const [turnLeft,setTurnLeft]=useState(TURN_SECS);
   const turnLeftRef=useRef(TURN_SECS);
   const turnKey=useRef("");
@@ -2542,6 +2660,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       const iControl=net?(S.curIdx===mySeat):(S.curIdx===0);
       if(!iControl)return; // clock only runs for the seat this client plays
       turnLeftRef.current-=1;setTurnLeft(turnLeftRef.current);
+      // beep every visible number (<=15) — friends games only (timerOff already excludes solo-vs-bots)
+      if(turnLeftRef.current>0&&turnLeftRef.current<=15)playCountBeep(turnLeftRef.current);
       if(turnLeftRef.current<=0){turnKey.current="";autoPlayTimeout();}
     },1000);
     return()=>clearInterval(iv);
@@ -2575,7 +2695,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       playApplause();
     }
     const hd=[...histRef.current];
-    return <GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!(cfg&&cfg.practice)} coinMult={(cfg&&cfg.coinMult)||COIN_MULT} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/>;
+    return <React.Fragment>{fw&&<Fireworks/>}<GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!(cfg&&cfg.practice)} coinMult={(cfg&&cfg.coinMult)||COIN_MULT} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/></React.Fragment>;
   }
 
   const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2943,6 +3063,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   return (
     <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
       <Overlays/>
+      {fw&&<Fireworks/>}
       <div style={{background:PNL,padding:"5px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+BRD,flexShrink:0,height:40,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
         <span style={{fontSize:17,fontWeight:800,color:"#d4af37",fontFamily:"Georgia,serif",textShadow:"0 1px 3px rgba(0,0,0,0.6)"}}>🐷 {title}</span>
         <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.07)",borderRadius:7,padding:2}}>
@@ -3487,6 +3608,15 @@ async function profFetch(code){
   if(error)throw error;
   if(data)profSaveLocal(data);
   return data; // null if not found
+}
+// Name-collision lookup (v0821.2): fresh devices kept minting a NEW code for the SAME
+// person because NamePrompt never asked "do you already have a code?". Before creating
+// a row with a name that already exists we show the matches and offer Restore instead.
+async function profFindByName(name){
+  const c=await profClient();
+  const {data,error}=await c.from("players").select("code,name,xp,games,pig_id").ilike("name",(name||"").trim()).limit(5);
+  if(error)throw error;
+  return data||[];
 }
 // Skill-bonus detection (v0812.1) from the finished game's playLog — hard-play bonuses:
 // (1) jdOff: captured J♦ in a trick led by a NON-diamond suit (someone off-suit dumped it to me) → +15
@@ -4118,29 +4248,83 @@ function ResumeModal({save,lang,onResume,onSurrender}){
   );
 }
 
-function NamePrompt({lang,onSave}){
+// WELCOME (v0821.2) — replaces NamePrompt. Fresh device → ask FIRST whether the player
+// already has a 4-char code (restore) or is new (name). New-name path checks the server
+// for the same name and offers restore before creating a duplicate account.
+function WelcomeModal({lang,onSave,onRestore}){
   const L=lang==="th";
+  const [mode,setMode]=useState("pick"); // pick | new | code | dup
   const [v,setV]=useState("");
+  const [code,setCode]=useState("");
+  const [dups,setDups]=useState([]);
   const [busy,setBusy]=useState(false);
-  async function save(){
-    const name=v.trim();
-    if(!name)return;
-    setBusy(true);
-    try{await onSave(name);}catch(e){}
+  const [err,setErr]=useState("");
+  const BTN={width:"100%",padding:"12px",borderRadius:10,border:"none",fontWeight:800,fontSize:15,cursor:"pointer"};
+  const INP={width:"100%",boxSizing:"border-box",textAlign:"center",fontSize:16,fontWeight:700,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.4)",borderRadius:10,padding:"10px",color:"#fff",outline:"none",marginBottom:10};
+  async function createNew(force){
+    const name=v.trim();if(!name)return;
+    setBusy(true);setErr("");
+    try{
+      if(!force){
+        let found=[];
+        try{found=await profFindByName(name);}catch(e){found=[];} // offline → just proceed
+        if(found.length){setDups(found);setMode("dup");setBusy(false);return;}
+      }
+      await onSave(name);
+    }catch(e){setErr(L?"บันทึกไม่สำเร็จ":"Save failed");}
     setBusy(false);
   }
+  async function restore(){
+    const cd=code.trim().toUpperCase();
+    if(cd.length!==4){setErr(L?"รหัสต้องมี 4 ตัว":"Code must be 4 chars");return;}
+    setBusy(true);setErr("");
+    try{const p=await profFetch(cd);if(!p)setErr(L?"ไม่พบรหัสนี้":"Code not found");else onRestore(p);}
+    catch(e){setErr(L?"เชื่อมต่อไม่ได้":"Connection error");}
+    setBusy(false);
+  }
+  const lvOf=x=>{try{return levelInfo(x||0).lv;}catch(e){return "-";}};
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{background:"#0b3d2e",border:"2px solid rgba(212,175,55,0.7)",borderRadius:16,padding:"1.4rem 1.2rem",width:"100%",maxWidth:320,color:"#fff",textAlign:"center"}}>
+      <div style={{background:"#0b3d2e",border:"2px solid rgba(212,175,55,0.7)",borderRadius:16,padding:"1.4rem 1.2rem",width:"100%",maxWidth:330,color:"#fff",textAlign:"center"}}>
         <div style={{fontSize:34,marginBottom:6}}>🐷</div>
-        <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:4}}>{L?"ตั้งชื่อผู้เล่นของคุณ":"Set your player name"}</div>
-        <div style={{fontSize:11,color:"#a7f3d0",marginBottom:14,lineHeight:1.5}}>{L?"ชื่อนี้จะใช้ในเกม สถิติ และตารางอันดับ Hall of Fame":"Used in games, stats, and the Hall of Fame"}</div>
-        <input autoFocus value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save();}} maxLength={16}
-          placeholder={L?"ใส่ชื่อให้หน่อยครับ":"Please enter your name"}
-          style={{width:"100%",boxSizing:"border-box",textAlign:"center",fontSize:16,fontWeight:700,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(212,175,55,0.4)",borderRadius:10,padding:"10px",color:"#fff",outline:"none",marginBottom:12}}/>
-        <button onClick={save} disabled={busy||!v.trim()} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:v.trim()?"#d4af37":"#6b7280",color:"#1a2e1a",fontWeight:800,fontSize:15,cursor:v.trim()?"pointer":"default"}}>
-          {busy?"...":(L?"ตกลง":"OK")}
-        </button>
+        {mode==="pick"&&(<>
+          <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:4}}>{L?"ยินดีต้อนรับสู่จับหมู":"Welcome to Jab Moo"}</div>
+          <div style={{fontSize:11,color:"#a7f3d0",marginBottom:14,lineHeight:1.5}}>{L?"เคยเล่นแล้วใช่ไหม? ใส่รหัส 4 ตัวเพื่อดึงคะแนน เหรียญ และอันดับเดิมกลับมา":"Played before? Enter your 4-char code to bring back your XP, coins and rank."}</div>
+          <button onClick={()=>{setMode("code");setErr("");}} style={{...BTN,background:"#d4af37",color:"#1a2e1a",marginBottom:8}}>🔑 {L?"มีรหัสแล้ว — กู้คะแนน":"I have a code — Restore"}</button>
+          <button onClick={()=>{setMode("new");setErr("");}} style={{...BTN,background:"rgba(255,255,255,0.12)",color:"#fff",border:"1px solid rgba(255,255,255,0.25)"}}>🆕 {L?"ผู้เล่นใหม่":"New player"}</button>
+        </>)}
+        {mode==="code"&&(<>
+          <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:4}}>{L?"ใส่รหัสผู้เล่น":"Enter your player code"}</div>
+          <div style={{fontSize:11,color:"#a7f3d0",marginBottom:12}}>{L?"รหัส 4 ตัวจากหน้า 🐷 หมูของฉัน ในเครื่องเดิม":"The 4-char code from 🐷 My Pig on your old device"}</div>
+          <input autoFocus value={code} onChange={e=>setCode(e.target.value.toUpperCase())} onKeyDown={e=>{if(e.key==="Enter")restore();}} maxLength={4} placeholder="K7Q2" style={{...INP,fontSize:26,fontWeight:900,letterSpacing:8,color:"#fde68a"}}/>
+          {err&&<div style={{fontSize:12,color:"#fca5a5",marginBottom:8}}>{err}</div>}
+          <button onClick={restore} disabled={busy||code.trim().length!==4} style={{...BTN,background:code.trim().length===4?"#d4af37":"#6b7280",color:"#1a2e1a",marginBottom:8}}>{busy?"...":(L?"กู้คะแนน":"Restore")}</button>
+          <button onClick={()=>{setMode("pick");setErr("");}} style={{...BTN,padding:"7px",background:"transparent",color:"#a7f3d0",fontSize:12,fontWeight:600}}>{L?"← กลับ":"← Back"}</button>
+        </>)}
+        {mode==="new"&&(<>
+          <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:4}}>{L?"ตั้งชื่อผู้เล่นของคุณ":"Set your player name"}</div>
+          <div style={{fontSize:11,color:"#a7f3d0",marginBottom:12,lineHeight:1.5}}>{L?"ชื่อนี้จะใช้ในเกม สถิติ และตารางอันดับ":"Used in games, stats, and the Hall of Fame"}</div>
+          <input autoFocus value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createNew(false);}} maxLength={16} placeholder={L?"ใส่ชื่อให้หน่อยครับ":"Please enter your name"} style={INP}/>
+          {err&&<div style={{fontSize:12,color:"#fca5a5",marginBottom:8}}>{err}</div>}
+          <button onClick={()=>createNew(false)} disabled={busy||!v.trim()} style={{...BTN,background:v.trim()?"#d4af37":"#6b7280",color:"#1a2e1a",marginBottom:8}}>{busy?"...":(L?"ตกลง":"OK")}</button>
+          <button onClick={()=>{setMode("pick");setErr("");}} style={{...BTN,padding:"7px",background:"transparent",color:"#a7f3d0",fontSize:12,fontWeight:600}}>{L?"← กลับ":"← Back"}</button>
+        </>)}
+        {mode==="dup"&&(<>
+          <div style={{fontSize:15,fontWeight:800,color:"#fde68a",marginBottom:4}}>⚠️ {L?"มีชื่อ \""+v.trim()+"\" อยู่แล้ว":"\""+v.trim()+"\" already exists"}</div>
+          <div style={{fontSize:11,color:"#a7f3d0",marginBottom:10,lineHeight:1.5}}>{L?"ถ้าเป็นคุณ ให้ใส่รหัส 4 ตัวของเครื่องเดิมแทน จะได้ไม่เสียคะแนนและไม่เกิดชื่อซ้ำ":"If this is you, enter the code from your old device instead — keeps your progress and avoids a duplicate."}</div>
+          <div style={{background:"rgba(0,0,0,0.3)",borderRadius:8,padding:"6px 8px",marginBottom:10,textAlign:"left"}}>
+            {dups.map(d=>(
+              <div key={d.code} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 0",fontSize:12}}>
+                <PigAvatar id={d.pig_id||0} size={24}/>
+                <span style={{flex:1,fontWeight:700}}>{d.name}</span>
+                <span style={{color:"#fde68a"}}>Lv.{lvOf(d.xp)} · {d.games||0} {L?"เกม":"games"}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>{setMode("code");setErr("");}} style={{...BTN,background:"#d4af37",color:"#1a2e1a",marginBottom:8}}>🔑 {L?"ใช่ฉันเอง — ใส่รหัส":"That's me — enter code"}</button>
+          <button onClick={()=>createNew(true)} disabled={busy} style={{...BTN,background:"rgba(255,255,255,0.12)",color:"#fff",border:"1px solid rgba(255,255,255,0.25)",marginBottom:8}}>{busy?"...":(L?"ไม่ใช่ — สร้างบัญชีใหม่":"Not me — create new")}</button>
+          <button onClick={()=>{setMode("new");setErr("");}} style={{...BTN,padding:"7px",background:"transparent",color:"#a7f3d0",fontSize:12,fontWeight:600}}>{L?"← เปลี่ยนชื่อ":"← Change name"}</button>
+        </>)}
       </div>
     </div>
   );
@@ -4425,7 +4609,7 @@ function App(){
         // on stale pre-v0814.8 clients those even got a 10,000 GRANT.)
         const p={code:genCode(),name:"",...BLANK_STATS,_local:true};
         profSaveLocal(p);
-        if(live){setProf(p);setNewCode(true);setShowCode(true);}
+        if(live){setProf(p);} // WelcomeModal (needName) takes over: restore-or-new
       }
     })();
     return()=>{live=false;};
@@ -4498,7 +4682,7 @@ function App(){
   }
 
   const needName=!!(prof&&prof.code)&&!(prof.name&&prof.name.trim())&&!showCode;
-  const namePrompt=needName?<NamePrompt lang={lang} onSave={doRename}/>:null;
+  const namePrompt=needName?<WelcomeModal lang={lang} onSave={doRename} onRestore={doRestore}/>:null;
   async function doSurrender(){
     const sg=savedGame;
     try{localStorage.removeItem("jm-savegame-v1");}catch(e){}
