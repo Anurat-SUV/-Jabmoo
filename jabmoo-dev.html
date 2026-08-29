@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.7-dev";
+  var VER="v0821.8-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1662,7 +1662,7 @@ function Fireworks(){
           ))}
         </React.Fragment>
       ))}
-      <div style={{position:"fixed",top:"30%",left:"50%",transform:"translateX(-50%)",fontSize:40,fontWeight:900,color:"#fde68a",textShadow:"0 0 18px rgba(253,230,138,0.9),0 2px 4px rgba(0,0,0,0.6)",animation:"confettiFall 0s"}}>SUPER SLAM! 788</div>
+      <div style={{position:"fixed",top:"30%",left:"50%",transform:"translateX(-50%)",fontSize:40,fontWeight:900,color:"#fde68a",textShadow:"0 0 18px rgba(253,230,138,0.9),0 2px 4px rgba(0,0,0,0.6)",animation:"confettiFall 0s"}}>👑 บิ๊กช้วน! SUPER SLAM 788</div>
     </div>
   );
 }
@@ -4237,7 +4237,7 @@ function RulesModal({lang,onClose}){
         คะแนนสะสมจบแมตช์ถูกแปลงเป็น "หลัก": เศษ ±50 ไม่ปัดขึ้น — <b>151 = 2 หลัก แต่ 150 = 1 หลัก</b> · ได้เสีย = (4×หลักตัวเอง − รวมทั้งโต๊ะ) × ตัวคูณโต๊ะ · ฝั่งได้จ่ายต๋ง 15% เข้ากองกลาง
       </JmSection>
       <JmSection icon="🏁" title="จบเกม / จบแมตช์">
-        1 เกม = 13 กอง · 1 แมตช์มีหลายเกม (ปกติ 8) · จบแมตช์รวมคะแนนทุกเกมแล้วคิดหลัก+coin ครั้งเดียว
+        1 เกม = 13 กอง · 1 แมตช์มีหลายเกม (ปกติ 8) · จบแมตช์รวมคะแนนทุกเกมแล้วคิดหลัก+coin ครั้งเดียว · แจกไพ่แล้วถ้ามือใด<b>ไม่มีหัวใจเลย</b> ระบบล้างแจกใหม่อัตโนมัติ
       </JmSection>
           <JmSection icon="🏳️" title="ออกก่อนจบ / ยอมแพ้">
         <div style={{marginBottom:4}}>• กด <b>ยอมแพ้</b> หรือออกกลางเกม → <b>บอทเล่นแทนเรา</b>จนจบเกมนั้น แล้วคิดเหรียญตามผลจริงบนโต๊ะ</div>
@@ -4264,7 +4264,7 @@ function HowToModal({lang,onClose}){
         ไพ่ 1 สำรับมี 4 ดอก: ♠ โพดำ, ♥ หัวใจ, ♦ ข้าวหลามตัด, ♣ ดอกจิก · แต่ละดอกเรียงจากเล็กไปใหญ่: <b>2 3 4 5 6 7 8 9 10 J Q K A</b> (A ใหญ่สุด)
       </Step>
       <Step n="2" t="แจกไพ่ — คนละ 13 ใบ">
-        โต๊ะมี 4 คน แจกหมดสำรับพอดี ไพ่ในมือคุณคือ "กระสุน" ที่ต้องใช้ให้ครบทั้ง 13 รอบ
+        โต๊ะมี 4 คน แจกหมดสำรับพอดี ไพ่ในมือคุณคือ "กระสุน" ที่ต้องใช้ให้ครบทั้ง 13 รอบ · ถ้ามือใครไม่มีหัวใจเลย ระบบแจกใหม่ให้อัตโนมัติ
       </Step>
       <Step n="3" t={'เล่นทีละ "กอง" (trick)'}>
         แต่ละกอง ทุกคนลงไพ่คนละ 1 ใบวนตามเข็ม · คนแรกของกอง "นำ" ดอกอะไร คนอื่น<b>ต้องลงดอกเดียวกัน</b>ถ้ามี · ถ้าไม่มีดอกนั้น = <b>ทิ้งใบไหนก็ได้</b> (จังหวะทองในการโยนใบอันตรายทิ้ง!)
