@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.3";
+  var VER="v0821.7";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -2488,7 +2488,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(!card)return;
     const ls=S.trick.length?S.trick[0].card.suit:null;
     if(!getValid(S.hands[mySeat],ls,S.trick).some(c=>c.key===card.key)){ap({type:"ERR",msg:lang==="th"?"ไพ่นี้เล่นไม่ได้":"Invalid card"});return;}
-    if(isClient){net.send("play",{seat:mySeat,cardKey:card.key});sRef.current={...S,selected:null};rd();return;}
+    if(isClient){pendingPlay.current={cardKey:card.key,ts:Date.now()};net.send("play",{seat:mySeat,cardKey:card.key});sRef.current={...S,selected:null};rd();return;}
     ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
   }
 
@@ -2508,6 +2508,20 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(!getValid(S.hands[p.seat],ls,S.trick).some(c=>c.key===card.key))return;
     ap({type:"PLAY",card,names:cfg.players.map(x=>x.name)});
   }
+  // CLIENT PLAY RESEND (v0821.4): if our "play" message got lost, the host still shows
+  // us as the blocker. While the authoritative state says it is STILL our turn and the
+  // card is STILL in our hand >2.5s after sending, re-send (max every 2.5s, self-limits).
+  const pendingPlay=useRef(null);
+  useEffect(()=>{
+    if(!isClient)return;
+    const iv=setInterval(()=>{
+      const p=pendingPlay.current;if(!p)return;
+      const S=sRef.current;
+      if(!S||S.phase!=="playing"||S.curIdx!==mySeat||!S.hands[mySeat]||!S.hands[mySeat].some(c=>c.key===p.cardKey)){pendingPlay.current=null;return;}
+      if(Date.now()-p.ts>2500){p.ts=Date.now();net.send("play",{seat:mySeat,cardKey:p.cardKey});}
+    },1000);
+    return()=>clearInterval(iv);
+  },[]);
   // CLIENT: render an authoritative frame from the host
   function applyFrame(p){
     if(!p||!p.S)return;
@@ -2526,6 +2540,17 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     lastSent.current=key;
     net.send("state",{S});
   });
+  // HOST HEARTBEAT (v0821.4): realtime broadcast is fire-and-forget — a lost frame froze
+  // that client forever. Re-send the authoritative state every 3s so any client that
+  // missed a frame (or just reconnected) self-heals. Idempotent on the client side.
+  useEffect(()=>{
+    if(!isHost)return;
+    const iv=setInterval(()=>{
+      const S=sRef.current;if(!S||!S.hands)return;
+      net.send("state",{S});
+    },3000);
+    return()=>clearInterval(iv);
+  },[]);
   // bind network handlers once
   useEffect(()=>{
     if(isHost&&net.bindMsg)net.bindMsg(applyRemoteMsg);
@@ -2647,7 +2672,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     const vld=getValid(S.hands[seat],ls2,S.trick);
     if(!vld.length)return;
     const card=vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
-    if(net&&isClient){net.send("play",{seat,cardKey:card.key});sRef.current={...S,selected:null};rd();}
+    if(net&&isClient){pendingPlay.current={cardKey:card.key,ts:Date.now()};net.send("play",{seat,cardKey:card.key});sRef.current={...S,selected:null};rd();}
     else ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
   }
   useEffect(()=>{
@@ -3220,7 +3245,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             {cfg.practice&&S.curIdx===0&&S.phase==="playing"&&(()=>{
               const ls=S.trick.length?S.trick[0].card.suit:null;
               const mustFollow=ls&&S.hands[0].some(c=>c.suit===ls);
-              const tip=!ls?"คุณนำตองนี้ — ลงใบไหนก็ได้ ลองนำดอกที่ปลอดภัย":(mustFollow?("ต้องลงดอก "+ls+" ตามใบนำ — ถ้าไม่อยากกิน ลงใบเล็ก"):("ไม่มีดอก "+ls+" — ทิ้งใบอันตราย (♠Q, ♥ใหญ่) ได้เลย!"));
+              const tip=!ls?"คุณนำกองนี้ — ลงใบไหนก็ได้ ลองนำดอกที่ปลอดภัย":(mustFollow?("ต้องลงดอก "+ls+" ตามใบนำ — ถ้าไม่อยากกิน ลงใบเล็ก"):("ไม่มีดอก "+ls+" — ทิ้งใบอันตราย (♠Q, ♥ใหญ่) ได้เลย!"));
               return (
                 <span style={{display:"inline-flex",alignItems:"center",gap:6,marginLeft:6}}>
                   <span style={{fontSize:12.5,color:"#3b2a00",background:"#fde68a",border:"1.5px solid #f59e0b",borderRadius:8,padding:"3px 10px",fontWeight:800,boxShadow:"0 1px 4px rgba(0,0,0,0.35)"}}>{coachHint?("💡 "+coachHint):("🎓 "+tip)}</span>
@@ -3769,22 +3794,36 @@ function loadSupabase(){
 }
 
 function makeSupabaseTransport({room,selfId,onEvent,url,key,onReady,onError}){
-  const t={ready:false,offline:false,_ch:null,_client:null,
+  const t={ready:false,offline:false,_ch:null,_client:null,_dead:false,
     send(type,payload){if(this._ch&&this.ready){try{this._ch.send({type:"broadcast",event:"msg",payload:{type,from:selfId,payload,t:Date.now()}});}catch(_){}}},
-    close(){try{if(this._client&&this._ch)this._client.removeChannel(this._ch);}catch(_){}}
+    close(){this._dead=true;try{if(this._client&&this._ch)this._client.removeChannel(this._ch);}catch(_){}}
   };
   (async()=>{
     try{
       const mod=await loadSupabase();
       const client=mod.createClient(url,key,{realtime:{params:{eventsPerSecond:20}}});
       t._client=client;
-      const ch=client.channel("jabmoo-"+room,{config:{broadcast:{self:false}}});
-      ch.on("broadcast",{event:"msg"},(m)=>{const d=m&&m.payload;if(d&&d.from!==selfId)onEvent(d);});
-      ch.subscribe((status)=>{
-        if(status==="SUBSCRIBED"){t.ready=true;if(onReady)onReady();}
-        else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){if(onError)onError(status);}
-      });
-      t._ch=ch;
+      // AUTO-RECONNECT (v0821.4): a dropped channel used to die silently — the player
+      // kept seeing a stale board ("เพื่อนไม่ยอมลงไพ่") while everyone else saw HIM stuck.
+      // Any error status now tears the channel down and resubscribes with backoff.
+      let retries=0;
+      const sub=()=>{
+        if(t._dead)return;
+        const ch=client.channel("jabmoo-"+room,{config:{broadcast:{self:false}}});
+        ch.on("broadcast",{event:"msg"},(m)=>{const d=m&&m.payload;if(d&&d.from!==selfId)onEvent(d);});
+        ch.subscribe((status)=>{
+          if(status==="SUBSCRIBED"){t.ready=true;retries=0;if(onReady)onReady();}
+          else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){
+            t.ready=false;
+            if(t._dead)return;
+            if(onError)onError(status);
+            if(retries<8){retries++;const wait=Math.min(800*retries,5000);
+              setTimeout(()=>{if(t._dead)return;try{client.removeChannel(ch);}catch(_){}sub();},wait);}
+          }
+        });
+        t._ch=ch;
+      };
+      sub();
     }catch(e){t.offline=true;if(onError)onError(e&&e.message?e.message:"connect error");}
   })();
   return t;
@@ -4169,29 +4208,35 @@ function RulesModal({lang,onClose}){
   return (
     <JmModal title="📖 กติกา & คะแนนไพ่" sub="จับหมู (กงจู๊แบบไทย) — เก็บให้น้อย หนีให้เก่ง" onClose={onClose}>
       <JmSection icon="🎯" title="เป้าหมาย">
-        หลีกเลี่ยงการกิน<b>ไพ่ติดลบ</b> (หัวใจทุกใบ และ Q♠ "หมู") และพยายามคว้า<b>ไพ่บวก</b> (J♦ "แพะ") — จบแต่ละเกม คะแนนมากสุดชนะ
+        หลีกเลี่ยงการกิน<b>ไพ่ติดลบ</b> (หัวใจทุกใบ และ Q♠ "หมู") และพยายามคว้า<b>ไพ่บวก</b> (J♦) — จบแต่ละเกม คะแนนมากสุดชนะ
       </JmSection>
       <JmSection icon="🃏" title="ไพ่คะแนน">
         <JmCardRow cards="♥2-♥10" label="หัวใจเล็ก" note="ติดลบตามหน้าไพ่" val="−2 ถึง −10" color="#dc2626"/>
         <JmCardRow cards="♥J ♥Q ♥K" label="หัวใจใหญ่" val="−20 / −30 / −40" color="#dc2626"/>
-        <JmCardRow cards="♥A" label="หัวใจเอซ" val="−50" color="#dc2626"/>
+        <JmCardRow cards="♥A" label="เอซหัวใจ" val="−50" color="#dc2626"/>
         <JmCardRow cards="♠Q" label="หมู 🐷" note="ใบเดียวหนักสุด" val="−100" color="#dc2626"/>
-        <JmCardRow cards="♦J" label="แพะ 🐐" note="ใบเดียวที่เป็นบวก" val="+100" color="#059669"/>
+        <JmCardRow cards="♦J" label="🐐" note="ใบเดียวที่เป็นบวก" val="+100" color="#059669"/>
         <JmCardRow cards="♣10" label="ตัวคูณ ✖️" note="คูณยอดที่เก็บได้ ×2" val="×2" color="#b45309"/>
         <div style={{fontSize:11,color:"#6b7280",marginTop:3}}>ถ้า ♣10 เป็นไพ่คะแนน<b>ใบเดียว</b>ที่คุณกินทั้งเกม → ได้ <b style={{color:"#059669"}}>+50</b> แทน</div>
       </JmSection>
       <JmSection icon="💥" title="กรณีพิเศษ">
-        <div style={{marginBottom:4}}>🚫 <b>ไม่กินตองเลย</b> หรือไม่กินไพ่คะแนนเลยทั้งเกม → <b style={{color:"#dc2626"}}>−50</b> (ห้ามหลบสุดโต่ง!)</div>
-        <div style={{marginBottom:4}}>💣 <b>สแลม</b> — กินหัวใจครบทั้ง 13 ใบคนเดียว: หัวใจพลิกเป็น <b style={{color:"#059669"}}>+194</b> (+100 ถ้าได้ ♦J, −100 ถ้าติด ♠Q, แล้วค่อย ×2 ถ้ามี ♣10)</div>
-        <div>👑 <b>ซูเปอร์สแลม</b> — กวาดหัวใจครบ + ♠Q + ♦J + ♣10 ทั้งหมดคนเดียว = <b style={{color:"#b45309"}}>+788</b></div>
+        <div style={{marginBottom:4}}>🚫 <b>ไม่กินกองเลย</b> หรือไม่กินไพ่คะแนนเลยทั้งเกม → <b style={{color:"#dc2626"}}>−50</b> (ห้ามหลบสุดโต่ง!)</div>
+        <div style={{marginBottom:4}}>💣 <b>ช้วน(Slam)</b> — กินหัวใจครบทั้ง 13 ใบคนเดียว: หัวใจพลิกเป็น <b style={{color:"#059669"}}>+194</b> (+100 ถ้าได้ ♦J, −100 ถ้าติด ♠Q, แล้วค่อย ×2 ถ้ามี ♣10)</div>
+        <div>👑 <b>บิ๊กช้วน(SuperSlam)</b> — กวาดหัวใจครบ + ♠Q + ♦J + ♣10 ทั้งหมดคนเดียว = <b style={{color:"#b45309"}}>+788</b></div>
       </JmSection>
       <JmSection icon="🪙" title="หลัก & coin">
         คะแนนสะสมจบแมตช์ถูกแปลงเป็น "หลัก": เศษ ±50 ไม่ปัดขึ้น — <b>151 = 2 หลัก แต่ 150 = 1 หลัก</b> · ได้เสีย = (4×หลักตัวเอง − รวมทั้งโต๊ะ) × ตัวคูณโต๊ะ · ฝั่งได้จ่ายต๋ง 15% เข้ากองกลาง
       </JmSection>
       <JmSection icon="🏁" title="จบเกม / จบแมตช์">
-        1 เกม = 13 ตอง · 1 แมตช์มีหลายเกม (ปกติ 8) · จบแมตช์รวมคะแนนทุกเกมแล้วคิดหลัก+coin ครั้งเดียว
+        1 เกม = 13 กอง · 1 แมตช์มีหลายเกม (ปกติ 8) · จบแมตช์รวมคะแนนทุกเกมแล้วคิดหลัก+coin ครั้งเดียว
       </JmSection>
-    </JmModal>
+          <JmSection icon="🏳️" title="ออกก่อนจบ / ยอมแพ้">
+        <div style={{marginBottom:4}}>• กด <b>ยอมแพ้</b> หรือออกกลางเกม → <b>บอทเล่นแทนเรา</b>จนจบเกมนั้น แล้วคิดเหรียญตามผลจริงบนโต๊ะ</div>
+        <div style={{marginBottom:4}}>• ถ้าคำนวณแทนไม่ได้ คะแนนเกมนั้น = <b>เท่าผู้เล่นที่ต่ำสุด</b>ของโต๊ะ</div>
+        <div style={{marginBottom:4}}>• สถิติ: นับเป็น 1 เกม อันดับ = <b style={{color:"#dc2626"}}>บ๊วย</b> · <b>ไม่ได้ XP</b> · นับ "ยอมแพ้" +1 ในประวัติ</div>
+        <div>• เล่นกับเพื่อน: อย่าปิดแอปกลางเกม — โต๊ะจะค้างรอ และเหรียญของแมตช์นั้นอาจไม่ถูกบันทึกครบ (ระบบออนไลน์ยังเบต้า)</div>
+      </JmSection>
+</JmModal>
   );
 }
 function HowToModal({lang,onClose}){
@@ -4212,14 +4257,14 @@ function HowToModal({lang,onClose}){
       <Step n="2" t="แจกไพ่ — คนละ 13 ใบ">
         โต๊ะมี 4 คน แจกหมดสำรับพอดี ไพ่ในมือคุณคือ "กระสุน" ที่ต้องใช้ให้ครบทั้ง 13 รอบ
       </Step>
-      <Step n="3" t={'เล่นทีละ "ตอง" (trick)'}>
-        แต่ละตอง ทุกคนลงไพ่คนละ 1 ใบวนตามเข็ม · คนแรกของตอง "นำ" ดอกอะไร คนอื่น<b>ต้องลงดอกเดียวกัน</b>ถ้ามี · ถ้าไม่มีดอกนั้น = <b>ทิ้งใบไหนก็ได้</b> (จังหวะทองในการโยนใบอันตรายทิ้ง!)
+      <Step n="3" t={'เล่นทีละ "กอง" (trick)'}>
+        แต่ละกอง ทุกคนลงไพ่คนละ 1 ใบวนตามเข็ม · คนแรกของกอง "นำ" ดอกอะไร คนอื่น<b>ต้องลงดอกเดียวกัน</b>ถ้ามี · ถ้าไม่มีดอกนั้น = <b>ทิ้งใบไหนก็ได้</b> (จังหวะทองในการโยนใบอันตรายทิ้ง!)
       </Step>
-      <Step n="4" t="ใครกินตอง?">
-        คนที่ลง<b>ไพ่ดอกนำที่ใหญ่ที่สุด</b>กินตองนั้นไปทั้ง 4 ใบ แล้วได้เป็นคนนำตองถัดไป · ไพ่ที่ทิ้งข้ามดอกไม่มีทางกิน ต่อให้เป็น A
+      <Step n="4" t="ใครกินกอง?">
+        คนที่ลง<b>ไพ่ดอกนำที่ใหญ่ที่สุด</b>กินกองนั้นไปทั้ง 4 ใบ แล้วได้เป็นคนนำกองถัดไป · ไพ่ที่ทิ้งข้ามดอกไม่มีทางกิน ต่อให้เป็น A
       </Step>
       <Step n="5" t="แล้วทำไมไม่อยากกิน?">
-        เพราะไพ่ที่กินมาอาจมี<b>ใบติดลบ</b>! หัวใจทุกใบและ ♠Q คือยาพิษ · ศิลปะของเกมนี้คือ กินเฉพาะตองสะอาด และ "ป้อน" ใบพิษให้คนอื่นกิน 😈
+        เพราะไพ่ที่กินมาอาจมี<b>ใบติดลบ</b>! หัวใจทุกใบและ ♠Q คือยาพิษ · ศิลปะของเกมนี้คือ กินเฉพาะกองสะอาด และ "ป้อน" ใบพิษให้คนอื่นกิน 😈
       </Step>
       <Step n="6" t="เคล็ดลัดเริ่มต้น">
         • ♠A ♠K อันตราย — อาจโดนบังคับกิน ♠Q ("หมู")<br/>• รีบทิ้งดอกที่มีน้อยให้หมด จะได้ทิ้งข้ามดอกได้เร็ว<br/>• เก็บใบเล็กไว้หนีตอนท้ายเกม<br/>• ลอง<b>โหมดฝึก 🃏</b> — มีคำแนะนำทุกตา ไม่บันทึกสถิติ ไม่เสีย coin
@@ -4300,6 +4345,7 @@ function WelcomeModal({lang,onSave,onRestore}){
           {err&&<div style={{fontSize:12,color:"#fca5a5",marginBottom:8}}>{err}</div>}
           <button onClick={restore} disabled={busy||code.trim().length!==4} style={{...BTN,background:code.trim().length===4?"#d4af37":"#6b7280",color:"#1a2e1a",marginBottom:8}}>{busy?"...":(L?"กู้คะแนน":"Restore")}</button>
           <button onClick={()=>{setMode("pick");setErr("");}} style={{...BTN,padding:"7px",background:"transparent",color:"#a7f3d0",fontSize:12,fontWeight:600}}>{L?"← กลับ":"← Back"}</button>
+        <div style={{marginTop:10,fontSize:11,color:"#fbbf24",lineHeight:1.5}}>{L?"จำรหัสไม่ได้? ให้โทรหา เอ 📞":"Forgot your code? Call A 📞"}</div>
         </>)}
         {mode==="new"&&(<>
           <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:4}}>{L?"ตั้งชื่อผู้เล่นของคุณ":"Set your player name"}</div>
