@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.10-dev";
+  var VER="v0821.13-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2296,6 +2296,54 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     }
   });
   const coinFired=useRef(false);
+  // SEAT TAKEOVER (v0821.13): a vanished CLIENT used to freeze the whole table forever
+  // (auto-play runs only on the turn owner's device). Host-side: if a remote human's
+  // turn stalls >45s (their own device auto-plays at ~25s, so 45s = device truly gone)
+  // the host marks the seat "subbed" and its bots play that hand for the REST OF THE
+  // MATCH (Lv3 MC). Subbed list rides along on every state frame for the 🤖 badge.
+  const subbed=useRef([false,false,false,false]);
+  const subView=useRef([false,false,false,false]); // client-side copy from frames
+  const stallRef=useRef({k:"",ts:0});
+  useEffect(()=>{
+    if(!net||isClient)return;
+    const iv=setInterval(()=>{
+      const S=sRef.current;
+      if(!S||S.phase!=="playing")return;
+      const i=S.curIdx;
+      const k=i+"-"+S.trickNum+"-"+S.trick.length+"-"+S.gameNum;
+      if(stallRef.current.k!==k){stallRef.current={k,ts:Date.now()};return;}
+      if(Date.now()-stallRef.current.ts<45000)return;
+      if(i===mySeat||cfg.players[i].isBot||subbed.current[i])return;
+      subbed.current=subbed.current.map((x,j)=>j===i?true:x);
+      gameLogRef.current.push("SUB seat "+i+" ("+cfg.players[i].name+") — stalled, bot takes over");
+      rd(); // re-run the bot effect so the substitute plays immediately
+    },5000);
+    return()=>clearInterval(iv);
+  },[]);
+  const isBotSeat=(i)=>!!(cfg.players[i]&&cfg.players[i].isBot)||!!subbed.current[i];
+  // HOST-GONE WATCHDOG (v0821.11): host heartbeats every 3s; transport auto-reconnect
+  // takes at most ~27s. 30s of silence on a client mid-match therefore means the host
+  // is truly gone (crash / app closed / fled) → settle the completed games and show a
+  // blocking modal with a home button instead of leaving the table frozen forever.
+  const lastFrameAt=useRef(Date.now());
+  const abandonFired=useRef(false);
+  const [hostGone,setHostGone]=useState(null); // {games,net?,error?,pending?}
+  useEffect(()=>{
+    if(!isClient||(cfg&&cfg.practice))return;
+    const iv=setInterval(()=>{
+      if(abandonFired.current||coinFired.current)return;
+      const S=sRef.current;if(!S||S.gameOver)return;
+      if(Date.now()-lastFrameAt.current<30000)return;
+      abandonFired.current=true;coinFired.current=true;
+      const games=(S.gameNum||1)-1;
+      if(games<1||!onMatchCoins){setHostGone({games:0});return;}
+      setHostGone({games,pending:true});
+      Promise.resolve(onMatchCoins(S.totals,mySeat,{room:String(net.room||""),isHost:false,players:cfg.players,abandoned:true,games},(cfg&&cfg.coinMult)||COIN_MULT))
+        .then(()=>setHostGone(h=>h?{...h,pending:false}:h))
+        .catch(()=>setHostGone(h=>h?{...h,pending:false,error:true}:h));
+    },5000);
+    return()=>clearInterval(iv);
+  },[]);
 
   useEffect(()=>{
     if(isClient)return; // client waits for host frames; engine runs on host/local
@@ -2309,7 +2357,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(!S||!S.hands||S.phase!=="playing")return;
     // Don't let bot fire until game is properly initialized (gameNum matches)
     if(S.gameNum<1)return;
-    if(!cfg.players[S.curIdx].isBot)return;
+    if(!isBotSeat(S.curIdx))return;
     const k=S.curIdx+"-"+S.trickNum+"-"+S.trick.length+"-"+S.gameNum;
     // bk.current marks keys already PLAYED (set inside the timeout), not merely
     // scheduled — cleanup clears the pending timer on every re-render, so an
@@ -2318,11 +2366,11 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     clearTimeout(tmr.current);
     tmr.current=setTimeout(()=>{
       const S2=sRef.current;
-      if(!S2||S2.phase!=="playing"||!cfg.players[S2.curIdx].isBot)return;
+      if(!S2||S2.phase!=="playing"||!isBotSeat(S2.curIdx))return;
       const k2=S2.curIdx+"-"+S2.trickNum+"-"+S2.trick.length+"-"+S2.gameNum;
       if(bk.current===k2)return;
       bk.current=k2;
-      const lvl=cfg.players[S2.curIdx].botLevel;
+      const lvl=cfg.players[S2.curIdx].isBot?cfg.players[S2.curIdx].botLevel:3; // subbed human → Lv3 MC
       if(lvl===3){
         setAiThinking(true);
         setTimeout(()=>{
@@ -2506,11 +2554,13 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(!p)return;
     if(p.type==="again"){
       const S=sRef.current;if(!S||!S.gameOver)return;
+      subbed.current=[false,false,false,false];
       bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;
       ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});return;
     }
     const S=sRef.current;
     if(!S||S.phase!=="playing"||S.curIdx!==p.seat)return;
+    if(subbed.current[p.seat])return; // seat is bot-subbed for this match
     const card=S.hands[p.seat].find(c=>c.key===p.cardKey);
     if(!card)return;
     const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2534,6 +2584,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // CLIENT: render an authoritative frame from the host
   function applyFrame(p){
     if(!p||!p.S)return;
+    lastFrameAt.current=Date.now();
+    if(p.sub)subView.current=p.sub;
     const prev=sRef.current;
     const keepSel=(prev&&p.S.curIdx===mySeat)?prev.selected:null;
     sRef.current={...p.S,selected:keepSel};
@@ -2547,7 +2599,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     const key=JSON.stringify(S);
     if(key===lastSent.current)return;
     lastSent.current=key;
-    net.send("state",{S});
+    net.send("state",{S,sub:subbed.current});
   });
   // HOST HEARTBEAT (v0821.4): realtime broadcast is fire-and-forget — a lost frame froze
   // that client forever. Re-send the authoritative state every 3s so any client that
@@ -2556,7 +2608,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(!isHost)return;
     const iv=setInterval(()=>{
       const S=sRef.current;if(!S||!S.hands)return;
-      net.send("state",{S});
+      net.send("state",{S,sub:subbed.current});
     },3000);
     return()=>clearInterval(iv);
   },[]);
@@ -2729,7 +2781,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       playApplause();
     }
     const hd=[...histRef.current];
-    return <React.Fragment>{fw&&<Fireworks/>}<GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!(cfg&&cfg.practice)} coinMult={(cfg&&cfg.coinMult)||COIN_MULT} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/></React.Fragment>;
+    return <React.Fragment>{fw&&<Fireworks/>}<GameOver players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!(cfg&&cfg.practice)} coinMult={(cfg&&cfg.coinMult)||COIN_MULT} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{if(isClient){net.send("again",{});return;}subbed.current=[false,false,false,false];bk.current="";histRef.current=[];gameLogRef.current=[];lastRecordedGame.current=-1;lastShuffleGame.current=-1;ap({type:"INIT",dealer:0,totals:[0,0,0,0],gameNum:1});}}/></React.Fragment>;
   }
 
   const ls=S.trick.length?S.trick[0].card.suit:null;
@@ -2765,13 +2817,20 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(net){const pc=peerCoins[(mySeat+i)%4];if(pc&&pc.lv!=null)return "Lv."+pc.lv;}
     return null;
   };
+  // 🤖 badge for bot-subbed seats (view index → absolute seat)
+  const subMark=i=>{
+    if(!net)return "";
+    const abs=(mySeat+i)%4;
+    const arr=isClient?subView.current:subbed.current;
+    return arr&&arr[abs]?" 🤖":"";
+  };
   const SeatChip=({i})=>{
     if(!coinLive)return null;
     const lv=seatLv(i),c=coinDisp(i);
     if(!lv&&!c)return null;
     return (
       <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(0,0,0,0.38)",border:"1px solid rgba(212,175,55,0.55)",borderRadius:9,padding:"1px 6px",whiteSpace:"nowrap"}}>
-        {lv&&<span style={{fontSize:8,fontWeight:800,color:"#93c5fd"}}>{lv}</span>}
+        {lv&&<span style={{fontSize:8,fontWeight:800,color:"#93c5fd"}}>{lv}{subMark(i)}</span>}
         {c&&<span style={{fontSize:9,fontWeight:800,color:"#ffd75e"}}>💰{c}</span>}
       </span>
     );
@@ -2873,7 +2932,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       <div style={{height:32,flexShrink:0,background:"rgba(15,32,39,0.97)",display:"flex",alignItems:"center",paddingLeft:8,paddingRight:6,gap:6,borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
         <span style={{fontSize:14,fontWeight:700,color:"#e2e8f0",fontFamily:"Georgia,serif",flexShrink:0}}>🐷</span>
         <span style={{fontSize:11,color:"#94a3b8",fontWeight:600,flexShrink:0}}>
-          {L?"เกม":"G"}{S.gameNum} · {L?"ตา":"T"}{S.trickNum}/13{S.trickNum>=13?" 🔥":""}
+          {L?"เกม":"G"}{S.gameNum} · {L?"ตา":"T"}{S.trickNum}/13{(typeof COIN_ON!=="undefined"&&COIN_ON&&!(cfg&&cfg.practice))?" · ×"+((((cfg&&cfg.coinMult)||COIN_MULT)>=1000)?(((cfg&&cfg.coinMult)||COIN_MULT)/1000)+"K":((cfg&&cfg.coinMult)||COIN_MULT)):""}{S.trickNum>=13?" 🔥":""}
         </span>
         <div style={{flex:1}}/>
         {aiThinking&&<span style={{fontSize:10,color:"#93c5fd",fontWeight:700}}>🤖…</span>}
@@ -3098,6 +3157,22 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
       <Overlays/>
       {fw&&<Fireworks/>}
+      {hostGone&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:9500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#0b3d2e",border:"2px solid rgba(212,175,55,0.7)",borderRadius:16,padding:"1.3rem 1.1rem",width:"100%",maxWidth:320,color:"#fff",textAlign:"center"}}>
+            <div style={{fontSize:34,marginBottom:6}}>📴</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#fde68a",marginBottom:6}}>{L?"โฮสต์หลุดจากเกม":"Host left the game"}</div>
+            <div style={{fontSize:12,color:"#a7f3d0",lineHeight:1.6,marginBottom:12}}>
+              {hostGone.games>0
+                ?(L?"คิดเหรียญจาก "+hostGone.games+" เกมที่จบแล้ว (เกมที่ค้างไม่นับ)":"Coins settled from the "+hostGone.games+" finished games (the unfinished one doesn't count)")
+                :(L?"ยังไม่มีเกมที่จบ — แมตช์นี้ไม่คิดเหรียญ":"No finished games — no coins settled")}
+              {hostGone.pending?(L?" · กำลังบันทึก...":" · saving..."):""}
+              {hostGone.error?(L?" · บันทึกไม่สำเร็จ":" · save failed"):""}
+            </div>
+            {onHome&&<button onClick={onHome} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",fontWeight:800,fontSize:15,cursor:"pointer",background:"#d4af37",color:"#1a2e1a"}}>🏠 {L?"กลับหน้าแรก":"Home"}</button>}
+          </div>
+        </div>
+      )}
       <div style={{background:PNL,padding:"5px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid "+BRD,flexShrink:0,height:40,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
         <span style={{fontSize:17,fontWeight:800,color:"#d4af37",fontFamily:"Georgia,serif",textShadow:"0 1px 3px rgba(0,0,0,0.6)"}}>🐷 {title}</span>
         <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.07)",borderRadius:7,padding:2}}>
@@ -3107,7 +3182,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <span style={{fontSize:12,color:S.trickNum>=13?"#dc2626":"#6b7280",fontWeight:600}}>
-            {round} {S.gameNum} · {trickL} {S.trickNum}/13{S.trickNum>=13?" "+last:""}
+            {round} {S.gameNum} · {trickL} {S.trickNum}/13{(typeof COIN_ON!=="undefined"&&COIN_ON&&!(cfg&&cfg.practice))?" · ×"+((((cfg&&cfg.coinMult)||COIN_MULT)>=1000)?(((cfg&&cfg.coinMult)||COIN_MULT)/1000)+"K":((cfg&&cfg.coinMult)||COIN_MULT)):""}{S.trickNum>=13?" "+last:""}
           </span>
           <button onClick={()=>setOrient("landscape")} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid rgba(212,175,55,0.4)",background:"rgba(255,255,255,0.06)",color:"#d4af37",cursor:"pointer"}}>🔄</button>
           {net&&<button onClick={()=>{if(chatOpen){setChatOpen(false);}else{openChat();}}} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid rgba(212,175,55,0.4)",background:chatOpen?"#d4af37":"rgba(255,255,255,0.06)",color:chatOpen?"#3b2d00":"#d4af37",cursor:"pointer",position:"relative"}}>
@@ -3569,6 +3644,44 @@ async function coinSettleOnline(totals,me,code,online,games,mult){
       }catch(e){}
     }
     return {net:net[me],rake:rake[me],h:hs[me],balance:bal,broke:bal<COIN_BROKE};
+  }catch(e){return {error:coinErrMsg(e)};}
+}
+// HOST-ABANDON SETTLE (v0821.11): host vanished mid-match → settle the COMPLETED
+// games only (totals exclude the in-progress game by design — totals update at game
+// end). Each surviving device writes its OWN seat row; then, staggered by seat, the
+// first one to find no BOT marker row for this room also writes BOT + HOUSE + coin_match
+// (lowest surviving seat wins the race). KNOWN HOLE: the host's own human row cannot be
+// written (his code lives only on his device) → match is NOT zero-sum; coin_match marks
+// his seat code "?" for the ledger audit. Real fix = server-side settle (deferred).
+async function coinSettleAbandon(totals,me,code,online,games,mult){
+  mult=mult||COIN_MULT;
+  if(!COIN_ON||!code)return null;
+  try{
+    const {hs,gross,rake,net}=coinCalc(totals,mult);
+    const matchId=code+"-"+Date.now();
+    const room=(online&&online.room)||"";
+    const bal=await coinWrite(code,net[me],"SETTLE",matchId,{h:hs[me],gross:gross[me],rake:rake[me],mult,room,online:true,abandoned:true,games});
+    await new Promise(r=>setTimeout(r,2000+me*4000)); // seat-staggered backup-writer race
+    const c=await profClient();
+    let done=false;
+    try{
+      const since=new Date(Date.now()-10*60*1000).toISOString();
+      const {data}=await c.from("coin_tx").select("id").eq("code","BOT").eq("type","SETTLE").gte("created_at",since).contains("meta",{room:room,abandoned:true}).limit(1);
+      done=!!(data&&data.length);
+    }catch(e){}
+    if(!done){
+      const botSeats=(online.players||[]).map((p,i)=>p&&p.isBot?i:-1).filter(i=>i>=0);
+      const botNet=botSeats.reduce((sum,i)=>sum+net[i],0);
+      await coinWrite("BOT",botNet,"SETTLE",matchId,{room,seats:botSeats,online:true,abandoned:true});
+      const rakeTotal=rake.reduce((a,b)=>a+b,0);
+      if(rakeTotal)await coinWrite("HOUSE",rakeTotal,"RAKE",matchId,{room,online:true,abandoned:true});
+      try{await c.from("coin_match").insert({match_id:matchId,mult,games:games,
+        seats:totals.map((t,i)=>({seat:i,isBot:!!(online.players&&online.players[i]&&online.players[i].isBot),
+          code:i===me?code:((online.players&&online.players[i]&&online.players[i].isBot)?"BOT":"?"),
+          score:t,h:hs[i],gross:gross[i],rake:rake[i],net:net[i]})),
+        rake_total:rakeTotal,room,abandoned:true});}catch(e){}
+    }
+    return {net:net[me],rake:rake[me],h:hs[me],balance:bal,broke:bal<COIN_BROKE,abandoned:true,games};
   }catch(e){return {error:coinErrMsg(e)};}
 }
 // last N ledger rows for one account (player history view)
@@ -4143,6 +4256,14 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
         {COIN_ON&&(
           <div style={{marginBottom:8}}>
             <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>{L?"โต๊ะ (ตัวคูณ/หลัก)":"Table (per unit)"}{!isHost&&(L?" — โฮสต์เป็นคนเลือก":" — host picks")}</div>
+            {!isHost?(()=>{ // JOINER VIEW (v0821.12): host picks the table — show only the pick, not the tab row
+              const t=COIN_TABLES.find(x=>x.mult===tableMult)||COIN_TABLES[0];
+              return (
+                <div style={{padding:"8px 10px",borderRadius:8,border:"1.5px solid #2563eb",background:"#eff6ff",fontSize:13,fontWeight:800,color:"#1e40af",display:"flex",alignItems:"center",gap:8}}>
+                  <span>🪙 ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}</span>
+                  {t.min>0&&<span style={{fontSize:10,fontWeight:600,color:"#3b82f6"}}>min {fmtCoin(t.min)}</span>}
+                </div>
+              );})():(
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               {COIN_TABLES.map((t,i)=>{
                 const hasBot=seats.some(x=>x.type==="bot");
@@ -4162,7 +4283,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
                   </button>
                 );
               })}
-            </div>
+            </div>)}
           </div>
         )}
         {isHost
@@ -4693,7 +4814,9 @@ function App(){
   },[coinCode,coinNamed]);
   async function settleCoins(totals,me,online,mult){
     const r=online
-      ?await coinSettleOnline(totals,me,coinCode,online,(cfg&&cfg.numGames)||8,mult)
+      ?(online.abandoned
+        ?await coinSettleAbandon(totals,me,coinCode,online,online.games||1,mult)
+        :await coinSettleOnline(totals,me,coinCode,online,(cfg&&cfg.numGames)||8,mult))
       :await coinSettleOffline(totals,me,coinCode,cfg&&cfg.numGames,mult);
     if(!r)return;
     if(r.error){setCoinMsg(r.error);setCoinResult({error:r.error});return;}
