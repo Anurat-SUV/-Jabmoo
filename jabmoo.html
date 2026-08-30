@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.15";
+  var VER="v0821.17";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1260,7 +1260,56 @@ function mcDeal(unseen,counts,voids){
   }
   return hands;
 }
-function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
+// BOT CHARACTERS (v0821.17 — "เก่งไม่เท่ากันรายตัว"). Skill knobs only, no hand-written
+// dumb logic: dealsX scales the MC rollout cap (fewer deals = noisier = weaker),
+// blur = chance to skip MC entirely and play the plain heuristic (natural mistakes),
+// hunt/antiLast gate the layer-2/3 weapons (see botPlayMC). The 5-dial personality
+// design (aggression/greed/caution/vindictive/slamlust) stays designed-not-active
+// pending bench. Defaults below; Supabase game_config key='bots' overrides (fail-open):
+//   {"chars":{"dang":{"blur":0.5}}, "lineup":{"100":["dang","dang","dang"]}}
+const BOT_CHARS={
+  dang:{name:"หมูเด้ง",dealsX:0.5 ,blur:0.35,hunt:false,antiLast:false}, // มือใหม่
+  tod :{name:"หมูทอด",dealsX:0.75,blur:0.15,hunt:false,antiLast:false}, // กลาง
+  pa  :{name:"หมูป่า",dealsX:1.0 ,blur:0.05,hunt:true ,antiLast:false}, // ดุ
+  thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false}  // เก่งสุด (และตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
+};
+const BOT_LINEUP={100:["dang","tod","dang"],200:["tod","pa","tod"],500:["pa","thep","pa"]};
+let BOT_REMOTE=null; // merged over defaults once loadBotConfig() resolves
+function botChar(id){
+  const base=BOT_CHARS[id]||BOT_CHARS.thep;
+  const o=BOT_REMOTE&&BOT_REMOTE.chars&&BOT_REMOTE.chars[id];
+  return o?Object.assign({},base,o):base;
+}
+function botLineup(mult){
+  const lu=(BOT_REMOTE&&BOT_REMOTE.lineup)||BOT_LINEUP;
+  return lu[mult]||lu[String(mult)]||lu[500]||lu["500"]||["pa","thep","pa"];
+}
+async function loadBotConfig(){ // remote override — fail-open, one shot at startup
+  try{
+    const c=await profClient(); if(!c)return;
+    const {data}=await c.from("game_config").select("val").eq("key","bots").limit(1);
+    if(data&&data[0]&&data[0].val)BOT_REMOTE=data[0].val;
+  }catch(e){}
+}
+
+// MC BUDGET BY TABLE (v0821.16 — layer 1 of the "bot gets smarter" plan).
+// The MC search is TIME-bound early in a hand (a full 13-candidate rollout sweep
+// costs far more than 700ms on a phone), so the bot at trick 1 was sampling only
+// a handful of deals and picking on noise. Rollout error falls as 1/sqrt(deals),
+// so buying more time is a real strength gain — we spend it where it matters:
+// expensive tables get a bigger think, cheap/practice tables stay snappy.
+// pace = the pre-play "human feel" pause; it shrinks as the think grows so total
+// turn time stays ~1.35s and rich tables do not visibly crawl.
+function mcBudget(mult){
+  const m=mult||100;
+  // v0821.17 remap (A: bots peak at x500) — x100 is the newbie pond, x500 is the shark tank.
+  // Bot tables only exist at x100/200/500; anything higher (SEAT TAKEOVER subs) gets max.
+  const t=m>=500?{ms:1800,deals:600}
+        :m>=200?{ms:1100,deals:300}
+        :       {ms:600 ,deals:110};
+  return {ms:t.ms,deals:t.deals,pace:Math.max(200,1350-t.ms)};
+}
+function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeals,opts){
   playLog=playLog||[];voids=voids||[{},{},{},{}];
   let vld=getValid(hand,ls,tc);
   // HARD RULE (mirrors heuristic v0719.1): following ♦ while J♦ is still unseen and
@@ -1461,6 +1510,7 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
   }
   if(vld.length===1)return vld[0];
   budgetMs=budgetMs||700;
+  const capDeals=maxDeals||200;
   const start=Date.now();
   // unseen cards = full deck minus my hand and everything in playLog (incl. current trick)
   const seen=new Set();
@@ -1509,14 +1559,45 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs){
       }
       const sc=[0,1,2,3].map(p=>calcScore(wc[p],wt[p]));
       const others=(sc[0]+sc[1]+sc[2]+sc[3]-sc[myIdx])/3;
-      sums[ci]+=sc[myIdx]-others;ns[ci]++;
+      let val=sc[myIdx]-others;
+      // ANTI-LAST OBJECTIVE (opts.antiLast — layer 3): payout is spread-based but rank
+      // still matters (XP/บ๊วย). Rollouts that leave us strictly last on running match
+      // totals eat a flat penalty, steering MC away from lines that save a few points
+      // now but cement 4th place.
+      if(opts&&opts.antiLast){
+        const mt=[0,1,2,3].map(p=>(totals[p]||0)+sc[p]);
+        let last=true;for(let p=0;p<4;p++)if(p!==myIdx&&mt[p]<=mt[myIdx]){last=false;break;}
+        if(last)val-=60;
+      }
+      sums[ci]+=val;ns[ci]++;
     }
-    if(ns[0]>=200)break;
+    if(ns[0]>=capDeals)break;
   }
   let best=0,bv=-1e9;
   for(let i=0;i<vld.length;i++){
     const v=ns[i]?sums[i]/ns[i]:-1e9;
     if(v>bv){bv=v;best=i;}
+  }
+  // SPADE HUNT tie-break (opts.hunt — layer 2): the multi-trick pig hunt MC cannot see.
+  // When we LEAD, hold spade control (A/K) but NOT Q♠, and Q♠ is still unseen,
+  // repeatedly leading LOW spades drains the Q♠ holder until the pig is forced out
+  // onto someone else. Single-trick EV rates the first low-spade lead as bland, so
+  // rollouts alone never start the plan — if such a lead sits within the noise margin
+  // of the best move, take it. MC still vetoes clearly losing hunts (outside margin).
+  if(opts&&opts.hunt&&!ls){
+    const qsSeen=playLog.some(e=>e.card.suit==="♠"&&e.card.rank==="Q");
+    const iHoldQ=hand.some(c=>c.suit==="♠"&&c.rank==="Q");
+    const myS=hand.filter(c=>c.suit==="♠");
+    if(!qsSeen&&!iHoldQ&&myS.length>=2&&myS.some(c=>c.rank==="A"||c.rank==="K")){
+      let hi=-1,hr=99;
+      for(let i=0;i<vld.length;i++){
+        const c=vld[i];
+        if(c.suit!=="♠"||RO[c.rank]>=RO["Q"])continue; // low spades only — never lead into the pig
+        const v=ns[i]?sums[i]/ns[i]:-1e9;
+        if(v>=bv-8&&RO[c.rank]<hr){hr=RO[c.rank];hi=i;}
+      }
+      if(hi>=0)return vld[hi];
+    }
   }
   // Tie-break: when the top choices are within noise margin, defer to the heuristic bot.
   // MC can't tell "equally lost" positions apart (e.g. a doomed J♦) and picks randomly,
@@ -1776,8 +1857,12 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
     // validate tier at start (balance may have dropped since selection)
     const tt=(typeof COIN_TABLES!=="undefined"&&COIN_TABLES[tblIdx])||null;
     const okT=tt&&tt.bot&&(tt.min===0||(coins!=null&&coins>=tt.min))?tt:null;
+    const _lu=botLineup(okT?okT.mult:100); // named characters per table tier
     onStart({
-      players:nm.map((n,i)=>({name:i===0?((prof&&prof.name)||n||(L?"คุณ":"You")):(n||(isBot[i]?"Bot "+(i+1):"P"+(i+1))),isBot:i===0?false:isBot[i],botLevel:lv[i]})),
+      players:nm.map((n,i)=>{
+        const bid=(i>0&&isBot[i])?_lu[(i-1)%_lu.length]:null;
+        return {name:i===0?((prof&&prof.name)||n||(L?"คุณ":"You")):(n||(bid?botChar(bid).name:"P"+(i+1))),isBot:i===0?false:isBot[i],botLevel:lv[i],botChar:bid||undefined};
+      }),
       endMode:em,threshold:th,numGames,showSec,coinMult:okT?okT.mult:100
     });
   }
@@ -2196,9 +2281,12 @@ function permuteState(S,mySeat){
     trick:(S.trick||[]).map(t=>({...t,playerIdx:inv(t.playerIdx)})),
     roundScores:pm(S.roundScores),lastRoundScores:pm(S.lastRoundScores)};
 }
-function seatsToCfg(seats){
+function seatsToCfg(seats,mult){
+  // mult picks the named-character lineup; deterministic from (seats,mult) so every
+  // client derives identical bot names/skills without extra broadcast.
+  const lu=botLineup(mult||100); let bi=0;
   return {players:seats.map(s=>s.type==="bot"
-      ?{name:"Bot",isBot:true,botLevel:3}
+      ?(()=>{const bid=lu[(bi++)%lu.length];return {name:botChar(bid).name,isBot:true,botLevel:3,botChar:bid};})()
       :{name:s.name||"?",isBot:false,botLevel:0}),
     endMode:"8games",threshold:300,numGames:8,showSec:1.4};
 }
@@ -2354,6 +2442,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     // scheduled — cleanup clears the pending timer on every re-render, so an
     // unplayed key must be rescheduled or the bot deadlocks.
     if(bk.current===k)return;
+    const mb=mcBudget(cfg.coinMult); // richer table => deeper MC (see mcBudget)
     clearTimeout(tmr.current);
     tmr.current=setTimeout(()=>{
       const S2=sRef.current;
@@ -2362,12 +2451,18 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       if(bk.current===k2)return;
       bk.current=k2;
       const lvl=cfg.players[S2.curIdx].isBot?cfg.players[S2.curIdx].botLevel:3; // subbed human → Lv3 MC
-      if(lvl===3){
+      const bc=botChar(cfg.players[S2.curIdx].isBot?cfg.players[S2.curIdx].botChar:"thep"); // takeover subs play at max
+      if(lvl===3&&bc.blur&&Math.random()<bc.blur){
+        // HEURISTIC BLUR: weak characters sometimes skip MC and play the plain heuristic —
+        // cheap, natural-looking mistakes instead of hand-written dumb logic.
+        const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
+        ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
+      } else if(lvl===3){
         setAiThinking(true);
         setTimeout(()=>{
           const S3=sRef.current;
           if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
-          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,700);
+          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast});
           setAiThinking(false);
           ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
         },30);
@@ -2384,7 +2479,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
         ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
       }
-    },650);
+    },mb.pace);
     return()=>clearTimeout(tmr.current);
   });
 
@@ -4042,7 +4137,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
       const meSeat=seatsX.findIndex(s=>s.type==="human"&&s.id===selfId);
       if(meSeat<0)return;
       const chatCbRef={current:null};
-      setGameCfg(Object.assign(seatsToCfg(seatsX),{coinMult:m.payload.coinMult||100}));
+      setGameCfg(Object.assign(seatsToCfg(seatsX,m.payload.coinMult||100),{coinMult:m.payload.coinMult||100}));
       setGameNet({role:"client",room:room,mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}},
         sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
         bindChat:(fn)=>{chatCbRef.current=fn;gameOnState._chatCb=fn;},
@@ -4078,7 +4173,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
     const seatIdx=sx.findIndex(s=>s.type==="human"&&s.id===selfId);
     if(seatIdx<0)return;
     if(tx.current)tx.current.send("start",{seats:sx,hostId:selfId,coinMult:tableMult});
-    setGameCfg(Object.assign(seatsToCfg(sx),{coinMult:tableMult}));
+    setGameCfg(Object.assign(seatsToCfg(sx,tableMult),{coinMult:tableMult}));
     setGameNet({role:"host",room:room,mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;},
       sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
       bindChat:(fn)=>{gameOnState._chatCb=fn;},
@@ -4891,6 +4986,7 @@ function App(){
   return <React.Fragment>{codeModal}{cfg.practice?null:coinBanner}<Game cfg={cfg} lang={lang} setLang={setLang} onGameStats={cfg.practice?null:commitStats} onHome={()=>{setCfg(null);setResumeGame(null);try{localStorage.removeItem("jm-savegame-v1");}catch(e){}}} resume={resumeGame} onMatchCoins={(COIN_ON&&!cfg.practice)?settleCoins:null} coins={coins} prof={prof}/></React.Fragment>;
 }
 
+loadBotConfig(); // remote bot tuning (fail-open)
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
