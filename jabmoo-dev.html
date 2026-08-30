@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.17-dev";
+  var VER="v0821.20-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1293,6 +1293,13 @@ function botLineup(mult){
   const lu=(BOT_REMOTE&&BOT_REMOTE.lineup)||BOT_LINEUP;
   return lu[mult]||lu[String(mult)]||lu[500]||lu["500"]||["pa","thep","pa"];
 }
+// Deterministic shuffle (LCG) — same seed => same order on every client.
+function seededShuffle(arr,seed){
+  const a=arr.slice(); let s=(seed>>>0)||1;
+  const rnd=()=>((s=(s*1664525+1013904223)>>>0)/4294967296);
+  for(let i=a.length-1;i>0;i--){const j=0|(rnd()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}
+  return a;
+}
 async function loadBotConfig(){ // remote override — fail-open, one shot at startup
   try{
     const c=await profClient(); if(!c)return;
@@ -1866,7 +1873,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
     // validate tier at start (balance may have dropped since selection)
     const tt=(typeof COIN_TABLES!=="undefined"&&COIN_TABLES[tblIdx])||null;
     const okT=tt&&tt.bot&&(tt.min===0||(coins!=null&&coins>=tt.min))?tt:null;
-    const _lu=botLineup(okT?okT.mult:100); // named characters per table tier
+    const _lu=seededShuffle(botLineup(okT?okT.mult:100),(Math.random()*1e9)|0); // character mix per tier, random seats per match
     onStart({
       players:nm.map((n,i)=>{
         const bid=(i>0&&isBot[i])?_lu[(i-1)%_lu.length]:null;
@@ -2290,10 +2297,11 @@ function permuteState(S,mySeat){
     trick:(S.trick||[]).map(t=>({...t,playerIdx:inv(t.playerIdx)})),
     roundScores:pm(S.roundScores),lastRoundScores:pm(S.lastRoundScores)};
 }
-function seatsToCfg(seats,mult){
-  // mult picks the named-character lineup; deterministic from (seats,mult) so every
-  // client derives identical bot names/skills without extra broadcast.
-  const lu=botLineup(mult||100); let bi=0;
+function seatsToCfg(seats,mult,seed){
+  // mult picks the character MIX per tier; seed (host-rolled, broadcast in the start
+  // payload) shuffles WHICH seat each character takes — random per match, yet every
+  // client derives identical names/skills from the same seed.
+  const lu=seededShuffle(botLineup(mult||100),seed==null?1:seed); let bi=0;
   return {players:seats.map(s=>s.type==="bot"
       ?(()=>{const bid=lu[(bi++)%lu.length];return {name:botChar(bid).name,isBot:true,botLevel:3,botChar:bid};})()
       :{name:s.name||"?",isBot:false,botLevel:0}),
@@ -2465,15 +2473,29 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         // HEURISTIC BLUR: weak characters sometimes skip MC and play the plain heuristic —
         // cheap, natural-looking mistakes instead of hand-written dumb logic.
         const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
-        ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
+        setTimeout(()=>{ // same min-turn pacing as the MC path — blur must not be a tell
+          const S4=sRef.current;
+          if(!S4||S4.phase!=="playing"||S4.curIdx!==S2.curIdx)return;
+          ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
+        },Math.max(0,650-mb.pace));
       } else if(lvl===3){
         setAiThinking(true);
         setTimeout(()=>{
           const S3=sRef.current;
           if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
+          const t0=Date.now();
           const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast});
-          setAiThinking(false);
-          ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
+          // MIN TURN TIME (v0821.18): the MC budget is a CEILING — forced plays and
+          // cheap late tricks finish in milliseconds and looked jarringly fast at
+          // x500. Pad the play-back so every turn takes ≥ ~0.68s from schedule;
+          // think quality untouched, only the rhythm is evened out.
+          const wait=Math.max(0,650-mb.pace-(Date.now()-t0)); // v0821.20: floor ~680ms — midpoint of pre-.18 instant plays and the 1.13s floor
+          setTimeout(()=>{
+            setAiThinking(false);
+            const S4=sRef.current;
+            if(!S4||S4.phase!=="playing"||S4.curIdx!==S2.curIdx)return; // state moved → effect reschedules
+            ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
+          },wait);
         },30);
       } else if(lvl===4){
         setAiThinking(true);
@@ -4146,7 +4168,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
       const meSeat=seatsX.findIndex(s=>s.type==="human"&&s.id===selfId);
       if(meSeat<0)return;
       const chatCbRef={current:null};
-      setGameCfg(Object.assign(seatsToCfg(seatsX,m.payload.coinMult||100),{coinMult:m.payload.coinMult||100}));
+      setGameCfg(Object.assign(seatsToCfg(seatsX,m.payload.coinMult||100,m.payload.botSeed==null?1:m.payload.botSeed),{coinMult:m.payload.coinMult||100}));
       setGameNet({role:"client",room:room,mySeat:meSeat,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindState:(fn)=>{gameOnState.current=fn;if(frameBuf.current){fn(frameBuf.current);frameBuf.current=null;}},
         sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
         bindChat:(fn)=>{chatCbRef.current=fn;gameOnState._chatCb=fn;},
@@ -4181,8 +4203,9 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
     if(!sx.every(s=>s.type!=="empty"))return;
     const seatIdx=sx.findIndex(s=>s.type==="human"&&s.id===selfId);
     if(seatIdx<0)return;
-    if(tx.current)tx.current.send("start",{seats:sx,hostId:selfId,coinMult:tableMult});
-    setGameCfg(Object.assign(seatsToCfg(sx,tableMult),{coinMult:tableMult}));
+    const bseed=(Math.random()*1e9)|0; // per-match bot-seat shuffle, shared with clients
+    if(tx.current)tx.current.send("start",{seats:sx,hostId:selfId,coinMult:tableMult,botSeed:bseed});
+    setGameCfg(Object.assign(seatsToCfg(sx,tableMult,bseed),{coinMult:tableMult}));
     setGameNet({role:"host",room:room,mySeat:seatIdx,send:(t,p)=>{if(tx.current)tx.current.send(t,p);},bindMsg:(fn)=>{gameOnPlay.current=fn;},
       sendChat:(m)=>{if(tx.current)tx.current.send("gchat",m);},
       bindChat:(fn)=>{gameOnState._chatCb=fn;},
