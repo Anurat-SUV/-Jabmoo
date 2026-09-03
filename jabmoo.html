@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.22";
+  var VER="v0821.25";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -807,6 +807,32 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     return jd;
   }
 
+  // J♦ COVER (v0821.24 — A's scenario: bots duck 3♦-K♦-Q♦ and the last human cashes
+  // J♦ over a low card for a free +100). Following ♦ WITHOUT J♦ while it's unseen,
+  // trick-high still BELOW J, and someone behind us could hold it (not ♦-void) →
+  // ducking hands the holder a free cash; play our CHEAPEST above-J diamond instead:
+  // denies the cash, and if the holder is forced, WE capture J♦ (+200 swing).
+  // Skip when the trick already carries penalty points — don't win garbage to cover.
+  if(ls==="♦"&&!hasJD&&!jOut){
+    const covD=vld.filter(c=>c.suit==="♦"&&RO[c.rank]>RO["J"]);
+    if(covD.length){
+      const dNow=tc.filter(t=>t.card.suit==="♦").map(t=>RO[t.card.rank]);
+      const hiNow=dNow.length?Math.max(...dNow):0;
+      const inT=new Set(tc.map(t=>t.playerIdx));
+      let jdBehindC=false;
+      for(let i=1;i<4;i++){const sx=(myIdx+i)%4;if(sx!==myIdx&&!inT.has(sx)&&!isVoid(voids,sx,"♦"))jdBehindC=true;}
+      const trickPenC=tc.reduce((sm,t)=>sm+cSc(t.card),0);
+      if(hiNow<RO["J"]&&jdBehindC&&trickPenC>=0){
+        // v0821.25 (A's call): covering is a BET, not a must — low-♦ leads are often
+        // the J♦ holder himself baiting Q/K/A out. Mixed strategy ~50% keeps us
+        // unexploitable both ways: always-duck gifts free cashes, always-cover walks
+        // into every bait. (When a Q/K/A already sits in the trick, hiNow>J and this
+        // block never fires — we duck and keep ours for a later round.)
+        if(Math.random()<0.5)return covD.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b); // cheapest cover
+      }
+    }
+  }
+
   // J♦ HUNT: we are mid-position (pos 1-2), following ♦, hold Q/K/A♦ but NOT J♦.
   // If J♦ still out and diamonds have been played a lot (≥2 rounds = 8 cards),
   // J♦ is concentrated in few hands → play a high ♦ to try to capture it.
@@ -1270,8 +1296,8 @@ function mcDeal(unseen,counts,voids){
 const BOT_CHARS={
   dang:{name:"หมูเด้ง",dealsX:0.5 ,blur:0.35,hunt:false,antiLast:false}, // มือใหม่
   tod :{name:"หมูทอด",dealsX:0.75,blur:0.15,hunt:false,antiLast:false}, // กลาง
-  pa  :{name:"หมูป่า",dealsX:1.0 ,blur:0.05,hunt:true ,antiLast:false}, // ดุ
-  thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false}  // เก่งสุด (และตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
+  pa  :{name:"หมูป่า",dealsX:1.0 ,blur:0.05,hunt:true ,antiLast:false,blowGuard:true}, // ดุ
+  thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false,blowGuard:true}  // เก่งสุด (และตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
 };
 const BOT_LINEUP={100:["dang","tod","dang"],200:["tod","pa","tod"],500:["pa","thep","pa"]};
 let BOT_REMOTE=null; // merged over defaults once loadBotConfig() resolves
@@ -1327,8 +1353,24 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
       ||tc.some(t=>t.card.suit==="♦"&&t.card.rank==="J")
       ||hand.some(c=>c.suit==="♦"&&c.rank==="J");
     if(!jdGone){
+      // J♦ COVER exception (v0821.24): trick-high < J + possible J♦ holder behind +
+      // clean trick → KEEP the cheapest above-J card as a candidate alongside the
+      // lows and let MC price cover-vs-duck; hard-banning it gifted last-position
+      // players a free J♦ cash over a low lead.
+      const dNowM=tc.filter(t=>t.card.suit==="♦").map(t=>RO[t.card.rank]);
+      const hiNowM=dNowM.length?Math.max(...dNowM):0;
+      const inTM=new Set(tc.map(t=>t.playerIdx));
+      let jdBehindM=false;
+      for(let i=1;i<4;i++){const sx=(myIdx+i)%4;if(!inTM.has(sx)&&!isVoid(voids,sx,"♦"))jdBehindM=true;}
+      const penM=tc.reduce((sm,t)=>sm+cSc(t.card),0);
       const lows=vld.filter(c=>c.rank!=="Q"&&c.rank!=="K"&&c.rank!=="A");
-      if(lows.length>0)vld=lows;
+      if(hiNowM<RO["J"]&&jdBehindM&&penM>=0&&lows.length>0){
+        const covs=vld.filter(c=>RO[c.rank]>RO["J"]);
+        if(covs.length){
+          const cheap=covs.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+          vld=lows.concat([cheap]);
+        }else vld=lows;
+      }else if(lows.length>0)vld=lows;
     }
   }
   // COVER GUARD (MC): holding Q♠ with A♠ unseen → never LEAD K♠ (burns the only
@@ -1575,6 +1617,19 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
         const mt=[0,1,2,3].map(p=>(totals[p]||0)+sc[p]);
         let last=true;for(let p=0;p<4;p++)if(p!==myIdx&&mt[p]<=mt[myIdx]){last=false;break;}
         if(last)val-=60;
+      }
+      if(opts&&opts.blowGuard){
+        // BLOW-UP GUARD (v0821.23 — the actual wound from the Kob logs): the linear
+        // objective prices −600→−800 the same as 0→−200, so MC happily trades a small
+        // mean gain for tail-explosion risk — exactly the tail strong players farm
+        // (they win with score ~0 by detonating one bot per game). Make the utility
+        // CONCAVE: every rollout point below the floor (running match total) hurts
+        // extra, steering MC toward dumping dangerous high cards early instead of
+        // clinging to them for petty trick EV. Tunable via remote config:
+        // blowGuard:true → {floor:-400,slope:0.5}, or pass {floor,slope} directly.
+        const bg=opts.blowGuard===true?{floor:-400,slope:0.5}:opts.blowGuard;
+        const bt=(totals[myIdx]||0)+sc[myIdx];
+        if(bt<bg.floor)val-=(bg.floor-bt)*bg.slope;
       }
       sums[ci]+=val;ns[ci]++;
     }
@@ -2482,7 +2537,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           const S3=sRef.current;
           if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
           const t0=Date.now();
-          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast});
+          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false});
           // MIN TURN TIME (v0821.18): the MC budget is a CEILING — forced plays and
           // cheap late tricks finish in milliseconds and looked jarringly fast at
           // x500. Pad the play-back so every turn takes ≥ ~0.68s from schedule;
