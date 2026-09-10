@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.25-dev";
+  var VER="v0821.28-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2096,28 +2096,25 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
           </div>
         ))}
 
-        <div style={{background:"#f9fafb",borderRadius:10,padding:"0.6rem",marginBottom:"0.5rem",border:"1px solid #e5e7eb"}}>
-          <div style={{fontSize:12,color:"#6b7280",marginBottom:6,fontWeight:600}}>{L?"จบเกมเมื่อ":"End when"}</div>
-          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-            <select value={em} onChange={e=>setEm(e.target.value)} style={SS}>
-              <option value="8games">{L?"จำนวนเกม":"By games"}</option>
-              <option value="threshold">{L?"ถึงคะแนน":"By score"}</option>
+        {/* v0821.28-dev: "จบเกมเมื่อ" + "แสดงไพ่หลังจบตา" merged onto one row so the
+            online button rises above the fold (no scroll needed to see it) */}
+        <div style={{background:"#f9fafb",borderRadius:10,padding:"0.6rem",marginBottom:"0.8rem",border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <div style={{fontSize:12,color:"#6b7280",fontWeight:600,whiteSpace:"nowrap"}}>{L?"จบเกมเมื่อ":"End when"}</div>
+          <select value={em} onChange={e=>setEm(e.target.value)} style={SS}>
+            <option value="8games">{L?"จำนวนเกม":"By games"}</option>
+            <option value="threshold">{L?"ถึงคะแนน":"By score"}</option>
+          </select>
+          {em==="8games" && (
+            <select value={numGames} onChange={e=>setNumGames(+e.target.value)} style={SS}>
+              {[1,4,8].map(v=><option key={v} value={v}>{v} {L?"เกม":"games"}</option>)}
             </select>
-            {em==="8games" && (
-              <select value={numGames} onChange={e=>setNumGames(+e.target.value)} style={SS}>
-                {[1,4,8].map(v=><option key={v} value={v}>{v} {L?"เกม":"games"}</option>)}
-              </select>
-            )}
-            {em==="threshold" && (
-              <select value={th} onChange={e=>setTh(+e.target.value)} style={SS}>
-                {[500,700,900,1000].map(v=><option key={v} value={v}>{v}</option>)}
-              </select>
-            )}
-          </div>
-        </div>
-
-        <div style={{background:"#f9fafb",borderRadius:10,padding:"0.6rem",marginBottom:"0.8rem",border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:10}}>
-          <div style={{fontSize:12,color:"#6b7280",fontWeight:600,whiteSpace:"nowrap"}}>{L?"⏱ แสดงไพ่หลังจบตา":"⏱ Show cards"}</div>
+          )}
+          {em==="threshold" && (
+            <select value={th} onChange={e=>setTh(+e.target.value)} style={SS}>
+              {[500,700,900,1000].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          )}
+          <div style={{fontSize:12,color:"#6b7280",fontWeight:600,whiteSpace:"nowrap",marginLeft:"auto"}}>⏱ {L?"โชว์ไพ่":"Show"}</div>
           <select value={showSec} onChange={e=>setShowSec(+e.target.value)} style={SS}>
             {[1,2,3,4,5].map(v=><option key={v} value={v}>{v} {L?"วิ":"sec"}</option>)}
           </select>
@@ -3525,9 +3522,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           </div>
         </div>
         <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}/>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>ap({type:"SEL",val:null})} style={{padding:"9px 14px",background:"rgba(255,255,255,0.07)",border:"1px solid "+BRD,borderRadius:8,fontSize:13,color:TXT2,cursor:"pointer"}}>{cancelTxt}</button>
-          <button onClick={humanPlay} style={{flex:1,padding:10,background:S.curIdx===0&&S.phase==="playing"?"linear-gradient(135deg,#d4af37,#f0d060,#d4af37)":"rgba(255,255,255,0.07)",border:"none",borderRadius:8,fontSize:14,fontWeight:800,color:S.curIdx===0&&S.phase==="playing"?"#3b2d00":"#5c6b60",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",boxShadow:S.curIdx===0&&S.phase==="playing"?"0 2px 10px rgba(212,175,55,0.4)":"none"}}>
+        {/* v0821.27-dev: gap below cards + full-width play button — cancel removed
+            (tapping the selected card again already deselects: SEL val:isSel?null:oi) */}
+        <div style={{display:"flex",marginTop:9}}>
+          <button onClick={humanPlay} style={{flex:1,padding:14,background:S.curIdx===0&&S.phase==="playing"?"linear-gradient(135deg,#d4af37,#f0d060,#d4af37)":"rgba(255,255,255,0.07)",border:"none",borderRadius:10,fontSize:16.5,fontWeight:800,color:S.curIdx===0&&S.phase==="playing"?"#3b2d00":"#5c6b60",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",boxShadow:S.curIdx===0&&S.phase==="playing"?"0 2px 10px rgba(212,175,55,0.4)":"none"}}>
             {S.selected!==null&&S.hands[0][S.selected]?(playTxt+" "+S.hands[0][S.selected].rank+S.hands[0][S.selected].suit):playTxt}
           </button>
         </div>
