@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.30";
+  var VER="v0821.32";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1273,10 +1273,77 @@ async function botPlayClaude(hand,ls,tc,allWon,totals,myIdx,playerNames){
 // ── LV3: MONTE CARLO BOT ─────────────────────────────────────────
 // Determinized rollouts: deal unseen cards to opponents (respecting known voids),
 // finish the round with the Lv2 heuristic for everyone, average my relative score.
-function mcDeal(unseen,counts,voids){
-  const u=shuffle(unseen);
+// BAYESIAN Q♠ PLACEMENT (v0821.31 — first weapon of เทพจับหมู; rules are A's own
+// table reads). mcDeal normally spreads unseen cards uniformly; strong humans READ
+// who is nursing the pig. Signals, all from the public log — no peeking:
+//   * led ♠ while Q♠ live → almost never the Q holder (real risk, hard to bluff) ×0.35
+//   * ≥2 lead turns and never led ♠ while Q live → hiding something ×1.5, damped to
+//     ×1.2 when many spades are still unseen (a LONG spade hand also sits quietly,
+//     but from comfort, not fear — A's 5-spade exception)
+//   * won a trick with A♠/K♠ then did NOT lead ♠ on their next lead → the spades
+//     left behind are dirty (Q, or a K fearing the A) ×1.8   [A: "90%"]
+// Weights only bias WHERE rollouts put Q♠; voids and hand counts still rule absolutely.
+function bayesQsWeights(hand,tc,playLog,voids,myIdx,humans){
+  // HUMANS-ONLY (bench v0821.31, 162 paired games: applying these reads to BOT
+  // opponents scored -24/game, t=-1.9 — bots DON'T carry human tells, e.g. a bot
+  // nursing Q♠ happily leads low spades, so the read steers Q AWAY from the real
+  // holder). The signals are A's reads of HUMANS; weight human seats only, leave
+  // bot seats uniform. No human opponent at the table => no read at all.
+  if(!humans||!humans.some((h,p)=>h&&p!==myIdx))return null;
+  if(hand.some(c=>c.key==="Q♠"))return null;
+  if(playLog.some(e=>e.card.key==="Q♠")||tc.some(t=>t.card.key==="Q♠"))return null;
+  const nT=(playLog.length/4)|0;
+  if(nT<2)return null; // not enough public evidence yet
+  const ledS=[0,0,0,0],leads=[0,0,0,0],silentAfterHigh=[0,0,0,0];
+  let pendHigh=-1;
+  for(let t=0;t<nT;t++){
+    const tr=playLog.slice(t*4,t*4+4);
+    const ls=tr[0].card.suit,leader=tr[0].pi;
+    if(pendHigh>=0&&leader===pendHigh){if(ls!=="♠")silentAfterHigh[pendHigh]=1;pendHigh=-1;}
+    leads[leader]++;
+    if(ls==="♠")ledS[leader]++;
+    const w=trickWin(tr.map(x=>({playerIdx:x.pi,card:x.card})),ls);
+    const wCard=(tr.find(x=>x.pi===w)||{}).card;
+    if(wCard&&wCard.suit==="♠"&&(wCard.rank==="A"||wCard.rank==="K")&&w!==myIdx)pendHigh=w;
+  }
+  const spSeen=new Set();
+  playLog.forEach(e=>{if(e.card.suit==="♠")spSeen.add(e.card.key);});
+  tc.forEach(t=>{if(t.card.suit==="♠")spSeen.add(t.card.key);});
+  const unseenSp=13-spSeen.size-hand.filter(c=>c.suit==="♠").length;
+  const w4=[0,0,0,0];
+  for(let p=0;p<4;p++){
+    if(p===myIdx)continue;
+    if(voids[p]&&voids[p]["♠"])continue;
+    let w=1;
+    if(humans[p]){
+      if(ledS[p]>0)w*=0.35;
+      else if(leads[p]>=2)w*=(unseenSp>=6?1.2:1.5);
+      if(silentAfterHigh[p])w*=1.8;
+    }
+    w4[p]=w;
+  }
+  return w4.some(x=>x>0)?w4:null;
+}
+function mcDeal(unseen,counts,voids,qsW){
   const hands=[[],[],[],[]];
   const need=counts.slice();
+  let rest=unseen;
+  // v0821.31: when a Bayesian read is supplied, place Q♠ FIRST by weighted pick —
+  // the rest of the deal stays uniform. Voids/hand counts always override.
+  if(qsW){
+    const qi=unseen.findIndex(c=>c.key==="Q♠");
+    if(qi>=0){
+      let tot=0;const el=[0,0,0,0];
+      for(let p=0;p<4;p++){el[p]=(need[p]>0&&!(voids[p]&&voids[p]["♠"]))?qsW[p]:0;tot+=el[p];}
+      if(tot>0){
+        let r=Math.random()*tot,pick=3;
+        for(let p=0;p<4;p++){r-=el[p];if(r<=0){pick=p;break;}}
+        hands[pick].push(unseen[qi]);need[pick]--;
+        rest=unseen.slice(0,qi).concat(unseen.slice(qi+1));
+      }
+    }
+  }
+  const u=shuffle(rest);
   for(const c of u){
     let opts=[];
     for(let p=0;p<4;p++)if(need[p]>0&&!(voids[p]&&voids[p][c.suit]))opts.push(p);
@@ -1297,9 +1364,10 @@ const BOT_CHARS={
   dang:{name:"หมูเด้ง",dealsX:0.5 ,blur:0.35,hunt:false,antiLast:false}, // มือใหม่
   tod :{name:"หมูทอด",dealsX:0.75,blur:0.15,hunt:false,antiLast:false}, // กลาง
   pa  :{name:"หมูป่า",dealsX:1.0 ,blur:0.05,hunt:true ,antiLast:false,blowGuard:true}, // ดุ
-  thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false,blowGuard:true}  // เก่งสุด (และตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
+  thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false,blowGuard:true,campaign:false,huntP:0.5}, // campaign ไม่ผ่าน bench v0821.32 (-17/เกม n=134) — เปิดทดลองได้ทาง remote config  // (ตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
+  thepjab:{name:"เทพจับหมู",dealsX:1.5,blur:0,hunt:true,antiLast:false,blowGuard:true,bayes:true,campaign:false} // BOSS (v0821.31): ทุกอาวุธของหมูเทพ + deals 900 + Bayesian Q♠ read — ตัวเดียวที่จะรับอาวุธใหม่ต่อจากนี้ หมูเทพ freeze ไว้เทียบ
 };
-const BOT_LINEUP={100:["dang","tod","dang"],200:["tod","pa","tod"],500:["pa","thep","pa"]};
+const BOT_LINEUP={100:["dang","tod","dang"],200:["tod","pa","tod"],500:["pa","thep","thepjab"]}; // v0821.31: x500 = ป่า+เทพ+เทพจับหมู (บันไดความโหด + วัดผลราย tier ได้)
 let BOT_REMOTE=null; // merged over defaults once loadBotConfig() resolves
 function botChar(id){
   const base=BOT_CHARS[id]||BOT_CHARS.thep;
@@ -1572,9 +1640,10 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
   playLog.forEach(e=>{playedBy[e.pi]++;});
   const counts=[0,1,2,3].map(p=>p===myIdx?0:13-playedBy[p]);
   const wt0=allWon.map(a=>(a.length/4)|0);
+  const qsW=(opts&&opts.bayes)?bayesQsWeights(hand,tc,playLog,voids,myIdx,opts.bayes.humans):null;
   const sums=vld.map(()=>0),ns=vld.map(()=>0);
   while(Date.now()-start<budgetMs){
-    const dealHands=mcDeal(unseen,counts,voids);
+    const dealHands=mcDeal(unseen,counts,voids,qsW);
     for(let ci=0;ci<vld.length;ci++){
       const hs=[0,1,2,3].map(p=>p===myIdx?hand.filter(c=>c.key!==vld[ci].key):dealHands[p].slice());
       const wc=allWon.map(a=>a.slice());
@@ -1640,25 +1709,54 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
     const v=ns[i]?sums[i]/ns[i]:-1e9;
     if(v>bv){bv=v;best=i;}
   }
-  // SPADE HUNT tie-break (opts.hunt — layer 2): the multi-trick pig hunt MC cannot see.
-  // When we LEAD, hold spade control (A/K) but NOT Q♠, and Q♠ is still unseen,
-  // repeatedly leading LOW spades drains the Q♠ holder until the pig is forced out
-  // onto someone else. Single-trick EV rates the first low-spade lead as bland, so
-  // rollouts alone never start the plan — if such a lead sits within the noise margin
-  // of the best move, take it. MC still vetoes clearly losing hunts (outside margin).
+  // SPADE HUNT tie-break (opts.hunt — layer 2) + SPADE CAMPAIGN (opts.campaign,
+  // v0821.32 — A: "กับเพื่อน การไล่มันต่อเนื่องและรุมกัน"). Base rule unchanged:
+  // to OPEN a hunt we need A/K control + >=2 spades. The campaign extension fixes
+  // the three gaps vs a human table: (1) NOT sustained — each ♠ lead already made
+  // while Q is live ("heat", read from the shared public log) WIDENS the tie-break
+  // margin 8 -> up to 20, so a started siege tends to be pressed home; (2) NOT
+  // cooperative — heat counts ANYONE's ♠ leads, human or bot, so every campaign
+  // bot joins an open siege without any bot-to-bot messaging; (3) joining an
+  // already-open siege needs no A/K control — leading a low spade you can't win
+  // with is free pressure. หมูเทพ runs the campaign only ~half of games (huntP,
+  // rolled once per game from match totals — sticky within a game, so it commits
+  // or abstains coherently instead of flickering). Withdraws the moment Q♠ shows.
   if(opts&&opts.hunt&&!ls){
     const qsSeen=playLog.some(e=>e.card.suit==="♠"&&e.card.rank==="Q");
     const iHoldQ=hand.some(c=>c.suit==="♠"&&c.rank==="Q");
     const myS=hand.filter(c=>c.suit==="♠");
-    if(!qsSeen&&!iHoldQ&&myS.length>=2&&myS.some(c=>c.rank==="A"||c.rank==="K")){
-      let hi=-1,hr=99;
-      for(let i=0;i<vld.length;i++){
-        const c=vld[i];
-        if(c.suit!=="♠"||RO[c.rank]>=RO["Q"])continue; // low spades only — never lead into the pig
-        const v=ns[i]?sums[i]/ns[i]:-1e9;
-        if(v>=bv-8&&RO[c.rank]<hr){hr=RO[c.rank];hi=i;}
+    if(!qsSeen&&!iHoldQ&&myS.length){
+      const canOpen=myS.length>=2&&myS.some(c=>c.rank==="A"||c.rank==="K");
+      let heat=0,joined=true,TIE=8;
+      if(opts.campaign){
+        const nT=(playLog.length/4)|0;
+        for(let t=0;t<nT;t++)if(playLog[t*4].card.suit==="♠")heat++;
+        if(opts.huntP!=null&&opts.huntP<1){ // per-game sticky roll (hash of totals+seat)
+          let h=(myIdx+1)|0;
+          for(let p=0;p<4;p++){h=(Math.imul(h,31)+((totals[p]|0)+1009))|0;}
+          h^=h>>>13;h=Math.imul(h,0x5bd1e995);h^=h>>>15;
+          joined=((h>>>0)%100)<opts.huntP*100;
+        }
+        // v0821.32b (bench chunk 1: -95/game — margins were runaway): the siege
+        // self-reinforced forever (heat only grows) at up to 20pts of accepted EV
+        // loss, and control-less joiners bled points whose payoff lands on whoever
+        // holds A/K. Refined: controller margin caps at 16, joiner at 12, and
+        // heat>=3 with Q STILL unseen = the holder is long (A's 5-spade rule) →
+        // stand down to the plain margin-8 controller hunt.
+        if(joined&&heat>0&&heat<3)TIE=8+(canOpen?Math.min(8,4*heat):Math.min(4,2*heat));
       }
-      if(hi>=0)return vld[hi];
+      const joinOpen=opts.campaign&&joined&&heat>0&&heat<3; // open siege — low spades suffice (until it stalls)
+      if((canOpen&&(!opts.campaign||joined||heat===0))||joinOpen){
+        // note: a non-joined หมูเทพ still keeps the ORIGINAL margin-8 hunt (canOpen path)
+        let hi=-1,hr=99;
+        for(let i=0;i<vld.length;i++){
+          const c=vld[i];
+          if(c.suit!=="♠"||RO[c.rank]>=RO["Q"])continue; // low spades only — never lead into the pig
+          const v=ns[i]?sums[i]/ns[i]:-1e9;
+          if(v>=bv-TIE&&RO[c.rank]<hr){hr=RO[c.rank];hi=i;}
+        }
+        if(hi>=0)return vld[hi];
+      }
     }
   }
   // Tie-break: when the top choices are within noise margin, defer to the heuristic bot.
@@ -2557,7 +2655,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           const S3=sRef.current;
           if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
           const t0=Date.now();
-          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false});
+          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false,bayes:bc.bayes?{humans:cfg.players.map(pl=>!pl.isBot)}:false,campaign:!!bc.campaign,huntP:bc.huntP});
           // MIN TURN TIME (v0821.18): the MC budget is a CEILING — forced plays and
           // cheap late tricks finish in milliseconds and looked jarringly fast at
           // x500. Pad the play-back so every turn takes ≥ ~0.68s from schedule;
