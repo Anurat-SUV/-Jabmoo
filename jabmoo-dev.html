@@ -3859,11 +3859,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           wood rail (mock 2026-09-13). Replaces the old top-row + 3-column layout. Seat 0's name /
           chip / scored cards moved here from the bottom panel. */}
       {(()=>{
-        const scoredTxt=L?"ไพ่ที่ได้แต้ม":"Scored";
         // short screens (≤667px): shrink seats + trick cards so the 4 seats and the center never overlap
-        const stageH=Math.max(280,vh-40-66-176);
-        const k=Math.min(1,Math.max(0.66,(stageH-12)/450));
-        const tW2=Math.round(tW*k), tH2=Math.round(tH*k);
+        const stageH=Math.max(280,vh-40-66-160);
+        const k=Math.min(1,Math.max(0.6,(stageH-12)/540));
+        const tW2=Math.round(tW*1.3*k), tH2=Math.round(tH*1.3*k); // trick cards 30% bigger than before (A 2026-09-13)
         const avaSz=Math.round(46*Math.min(sf,1.5)*k);
         const bkW=Math.round(24*Math.min(sf,1.5)*k), bkH=Math.round(34*Math.min(sf,1.5)*k);
         const sideW=Math.round(84*Math.min(sf,1.4));
@@ -3887,15 +3886,18 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         };
         const Stack=({i,vert})=>(
           <div style={{display:"flex",flexDirection:vert?"column":"row",alignItems:"center",justifyContent:"center"}}>
-            {S.hands[i].map((_,k)=><div key={k} style={vert?{marginTop:k>0?-Math.round(bkH*0.88):0}:{marginLeft:k>0?-Math.round(bkW*0.68):0}}><CB bk={cbKey} w={bkW} h={bkH}/></div>)}
+            {Array(Math.min(5,S.hands[i].length)).fill(0).map((_,k)=><div key={k} style={vert?{marginTop:k>0?-Math.round(bkH*0.8):0}:{marginLeft:k>0?-Math.round(bkW*0.6):0}}><CB bk={cbKey} w={bkW} h={bkH}/></div>)}
           </div>
         );
-        const cW=tW2*3+Math.round(28*sf*k), sideTop=tH2+Math.round(26*sf*k), cH=Math.round(tH2*2.6)+Math.round(30*sf*k);
+        // trick cards hug each player's edge of the felt (like the old table): offsets clear the
+        // seat block (name/chip/avatar row) plus the scored-card box when that seat has one
+        const hasSC=(i)=>S.wonCards[i].some(c=>isSC(c));
+        const seatTB=Math.round(60*k);
         const SP2=[
-          {bottom:0,left:"50%",transform:"translateX(-50%)"},
-          {right:0,top:sideTop},
-          {top:0,left:"50%",transform:"translateX(-50%)"},
-          {left:0,top:sideTop},
+          {bottom:Math.round(58*k)+(hasSC(0)?60:0),left:"50%",transform:"translateX(-50%)"},
+          {right:sideW+6,top:"50%",transform:"translateY(-50%)"},
+          {top:seatTB+(hasSC(2)?60:0),left:"50%",transform:"translateX(-50%)"},
+          {left:sideW+6,top:"50%",transform:"translateY(-50%)"},
         ];
         return (
           <div style={{flex:1,position:"relative",minHeight:0,backgroundImage:"url("+TABLE_BG+")",backgroundSize:"cover",backgroundPosition:"center",overflow:"hidden",zIndex:1}}>
@@ -3909,14 +3911,14 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
                 <Ava i={2} size={avaSz}/>
                 <Stack i={2} vert={false}/>
               </div>
-              <SCP wc={S.wonCards[2]} vert={false} label={scoredTxt}/>
+              <SCP wc={S.wonCards[2]} vert={false}/>
             </div>
 
             {/* LEFT seat — pl[3] */}
             <div style={{position:"absolute",left:3,top:"27%",width:sideW,display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5}}>
               <SeatTag i={3}/>
               <Ava i={3} size={avaSz}/>
-              <SCP wc={S.wonCards[3]} vert={true} label={scoredTxt}/>
+              <SCP wc={S.wonCards[3]} vert={true}/>
               <Stack i={3} vert={true}/>
             </div>
 
@@ -3924,7 +3926,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             <div style={{position:"absolute",right:3,top:"27%",width:sideW,display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5}}>
               <SeatTag i={1}/>
               <Ava i={1} size={avaSz}/>
-              <SCP wc={S.wonCards[1]} vert={true} label={scoredTxt}/>
+              <SCP wc={S.wonCards[1]} vert={true}/>
               <Stack i={1} vert={true}/>
             </div>
 
@@ -3934,7 +3936,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
                 <Ava i={0} size={avaSz}/>
                 <SeatTag i={0}/>
               </div>
-              <SCP wc={S.wonCards[0]} vert={false} label={scoredTxt}/>
+              <SCP wc={S.wonCards[0]} vert={false}/>
             </div>
 
             {/* bot thinking badge */}
@@ -3945,13 +3947,13 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             )}
 
             {/* CENTER — trick cards + lead/toast bubble */}
-            <div style={{position:"absolute",left:"50%",top:"calc(50% + "+Math.round(14*k)+"px)",transform:"translate(-50%,-50%)",width:cW,height:cH,zIndex:6}}>
+            <div style={{position:"absolute",inset:0,zIndex:6,pointerEvents:"none"}}>
               {S.toast.msg ? (
-                <div style={{position:"absolute",top:tH2+Math.round(13*sf*k),left:"50%",transform:"translate(-50%,-50%)",background:"rgba(4,30,20,0.92)",border:"1px solid rgba(212,175,55,0.45)",borderRadius:20,padding:"5px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 10px rgba(0,0,0,0.4)",pointerEvents:"none",textAlign:"center",maxWidth:"96vw",overflow:"hidden",textOverflow:"ellipsis"}}>
+                <div style={{position:"absolute",top:"calc(50% - "+(Math.round(tH2/2)+16)+"px)",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(4,30,20,0.92)",border:"1px solid rgba(212,175,55,0.45)",borderRadius:20,padding:"5px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 10px rgba(0,0,0,0.4)",pointerEvents:"none",textAlign:"center",maxWidth:"96vw",overflow:"hidden",textOverflow:"ellipsis"}}>
                   <span style={{fontSize:13,color:"#fff",fontWeight:700}}>{S.toast.msg}</span>
                 </div>
               ) : ls ? (
-                <div style={{position:"absolute",top:tH2+Math.round(13*sf*k),left:"50%",transform:"translate(-50%,-50%)",background:"rgba(255,255,255,0.95)",borderRadius:20,padding:"4px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",pointerEvents:"none"}}>
+                <div style={{position:"absolute",top:"calc(50% - "+(Math.round(tH2/2)+16)+"px)",left:"50%",transform:"translate(-50%,-50%)",background:"rgba(255,255,255,0.95)",borderRadius:20,padding:"4px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",pointerEvents:"none"}}>
                   <span style={{fontSize:13,color:"#1e3a5f",fontWeight:700}}>{pl[S.leadIdx].name}</span>
                   <span style={{fontSize:12,color:"#9ca3af"}}> lead </span>
                   <span style={{fontSize:20,fontWeight:800,color:SC(ls)==="#1a1a2e"?"#1a1a2e":SC(ls)}}>{ls}</span>
@@ -4012,8 +4014,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         );
       })()}
 
-      <div style={{background:PNL,borderTop:"1px solid "+BRD,padding:"5px 8px calc(8px + env(safe-area-inset-bottom))",flexShrink:0,boxShadow:"0 -2px 8px rgba(0,0,0,0.06)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:4}}>
+      <div style={{background:PNL,borderTop:"1px solid "+BRD,padding:"3px 8px calc(4px + env(safe-area-inset-bottom))",flexShrink:0,boxShadow:"0 -2px 8px rgba(0,0,0,0.06)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2,flexWrap:"wrap",gap:4,minHeight:18}}>
           {/* v0821.36-dev: name/chip/scored cards of seat 0 now live on the table stage */}
           <span/>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -4040,8 +4042,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}/>
         {/* v0821.27-dev: gap below cards + full-width play button — cancel removed
             (tapping the selected card again already deselects: SEL val:isSel?null:oi) */}
-        <div style={{display:"flex",marginTop:9}}>
-          <button onClick={humanPlay} style={{flex:1,padding:14,background:S.curIdx===0&&S.phase==="playing"?"linear-gradient(180deg,#1a6b47 0%,#0d4a32 55%,#0a3626 100%)":"rgba(255,255,255,0.04)",border:S.curIdx===0&&S.phase==="playing"?"2px solid #d4af37":"1.5px solid rgba(212,175,55,0.22)",borderRadius:12,fontSize:17,fontWeight:800,color:S.curIdx===0&&S.phase==="playing"?"#fde68a":"#5c6b60",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",boxShadow:S.curIdx===0&&S.phase==="playing"?"0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)":"none",textShadow:S.curIdx===0&&S.phase==="playing"?"0 1px 2px rgba(0,0,0,0.6)":"none"}}>
+        <div style={{display:"flex",marginTop:6}}>
+          <button onClick={humanPlay} style={{flex:1,padding:12,background:S.curIdx===0&&S.phase==="playing"?"linear-gradient(180deg,#1a6b47 0%,#0d4a32 55%,#0a3626 100%)":"rgba(255,255,255,0.04)",border:S.curIdx===0&&S.phase==="playing"?"2px solid #d4af37":"1.5px solid rgba(212,175,55,0.22)",borderRadius:12,fontSize:17,fontWeight:800,color:S.curIdx===0&&S.phase==="playing"?"#fde68a":"#5c6b60",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",boxShadow:S.curIdx===0&&S.phase==="playing"?"0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)":"none",textShadow:S.curIdx===0&&S.phase==="playing"?"0 1px 2px rgba(0,0,0,0.6)":"none"}}>
             {S.selected!==null&&S.hands[0][S.selected]?(playTxt+" "+S.hands[0][S.selected].rank+S.hands[0][S.selected].suit):playTxt}
           </button>
         </div>
