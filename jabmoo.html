@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.32";
+  var VER="v0821.34";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1324,7 +1324,113 @@ function bayesQsWeights(hand,tc,playLog,voids,myIdx,humans){
   }
   return w4.some(x=>x>0)?w4:null;
 }
-function mcDeal(unseen,counts,voids,qsW){
+// toH with soft edges (v0821.33 — for the หลัก-aware MC objective only): the real toH
+// is a staircase, and a staircase inside a ~40-900-rollout average is pure noise
+// (bench w=0.5 hard steps: −33/match). Each band edge becomes a sigmoid of width 12
+// points — MC still feels the edge, without the plateaus. Payout math untouched.
+function toHsoft(n){const a=Math.abs(n);if(a<=20)return 0;let h=0;for(let b=50;b<a+40;b+=100)h+=1/(1+Math.exp(-(a-b)/12));return n>0?h:-h;}
+// Q♠ POSTERIOR (v0821.33 — A: "B ยุติธรรมดี"): P(seat holds Q♠) built from HARD
+// facts that hold for anyone at the table — confirmed ♠-voids (0) and hand sizes
+// (hypergeometric prior: more unknown cards = more likely to hold it) — times the
+// SOFT human reads of bayesQsWeights (humans-only, bot seats stay ×1). Feeds the
+// SPADE CAMPAIGN gate: siege only when one seat is likelier than not (campQ) to
+// hold the pig — the .32 bench failure was squeezing with no target (wrong victim
+// / bots squeezing each other). null when Q♠ is seen or ours.
+function qsPosterior(hand,tc,playLog,voids,myIdx,humans){
+  if(hand.some(c=>c.key==="Q♠"))return null;
+  if(playLog.some(e=>e.card.key==="Q♠")||tc.some(t=>t.card.key==="Q♠"))return null;
+  const playedBy=[0,0,0,0];playLog.forEach(e=>{playedBy[e.pi]++;});
+  const bw=humans?bayesQsWeights(hand,tc,playLog,voids,myIdx,humans):null;
+  const w=[0,0,0,0];let tot=0;
+  for(let p=0;p<4;p++){
+    if(p===myIdx)continue;
+    if(voids[p]&&voids[p]["♠"])continue;
+    const n=13-playedBy[p];if(n<=0)continue;
+    w[p]=n*(bw?bw[p]:1);tot+=w[p];
+  }
+  if(tot<=0)return null;
+  return w.map(x=>x/tot);
+}
+// SLAM RISK (v0821.33 — SLAM DEFENSE package, A 2026-09-10). Returns
+// {seat,r} or null. Hard facts (everyone): SCORE-MONOPOLY — every score card
+// captured so far sits in ONE hand; a HEART captured by anyone else kills it
+// outright (slam impossible), a special (Q♠/J♦/10♣) elsewhere halves it (788 dead,
+// 194 still live). HEART-HOARD (everyone): far fewer hearts have appeared than
+// tricks played → someone is nursing them. DISCARD-TELL (humans only — bots don't
+// carry it): the suspect, void in the led suit, threw junk instead of a heart.
+function slamRisk(allWon,playLog,tc,voids,myIdx,humans){
+  const hb=allWon.map(w=>w.filter(c=>c.suit==="♥").length);
+  const sb=allWon.map(w=>w.filter(c=>c.suit!=="♥").length);
+  let seat=-1,owners=0;
+  for(let p=0;p<4;p++){if(hb[p]>0){owners++;seat=p;}}
+  if(owners>1)return null;                        // hearts split → slam impossible
+  // HEART-LEAD TELL (everyone, the big one — trace 2026-09-12: defenders dumped Q♥/J♥
+  // under a led A♥ at trick 2-3 and the slam was sealed before any pile existed):
+  // leading A♥/K♥ is only ever a slam move. Current trick + any earlier such lead.
+  const nT=(playLog.length/4)|0;
+  const logTell=[0,0,0,0],wins=[0,0,0,0];
+  for(let t=0;t<nT;t++){
+    const tr=playLog.slice(t*4,t*4+4);
+    if(t<=8&&tr[0].card.suit==="♥"&&RO[tr[0].card.rank]>=13)logTell[tr[0].pi]++;
+    wins[trickWin(tr.map(x=>({playerIdx:x.pi,card:x.card})),tr[0].card.suit)]++;
+  }
+  // (late A/K♥ leads — trick 10+ — are usually the −50 "no score card" dodge, not a slam)
+  const leadTell=(nT<=8&&tc.length&&tc[0].card.suit==="♥"&&RO[tc[0].card.rank]>=13)?tc[0].playerIdx:-1;
+  if(owners===0){                                 // nothing captured yet — tells only
+    let cand=leadTell;
+    if(cand<0)for(let p=0;p<4;p++)if(logTell[p]&&p!==myIdx)cand=p;
+    if(cand<0||cand===myIdx)return null;
+    let r=0.6;
+    if(nT>=2&&wins[cand]===nT)r+=0.2;             // has won every trick so far
+    return {seat:cand,r:Math.min(1,r)};
+  }
+  if(seat===myIdx)return null;
+  let r=hb[seat]>=5?0.8:hb[seat]>=3?0.5:hb[seat]>=2?0.3:0.15;
+  if(leadTell===seat||logTell[seat])r=Math.max(r,0.6);
+  if(sb[seat]>0)r+=0.1;                          // he took specials too (788 shape)
+  if(sb.some((n,p)=>p!==seat&&n>0))r*=0.5;       // a special landed elsewhere — only 194 left
+  if(nT>=2&&wins[seat]===nT)r+=0.15;
+  let hOut=0;playLog.forEach(e=>{if(e.card.suit==="♥")hOut++;});
+  if(nT>=3&&hOut*2<=nT)r*=1.4;                   // heart-hoard
+  if(humans&&humans[seat]){
+    let tell=0;
+    for(let t=0;t<nT;t++){
+      const tr=playLog.slice(t*4,t*4+4);const ls=tr[0].card.suit;
+      const e=tr.find(x=>x.pi===seat);
+      if(e&&e.card.suit!==ls&&e.card.suit!=="♥"&&e.card.key!=="Q♠")tell++;
+    }
+    if(tell)r*=Math.min(1.7,1+0.3*tell);
+  }
+  return {seat,r:Math.min(1,r)};
+}
+// SLAM-SEEKER rollout policy (v0821.33): once slamRisk is live the suspect plays
+// THIS inside MC rollouts instead of the plain heuristic, so the search actually
+// sees the slam coming and prices sacrifices (eat a heart, dump 10♣ where he can't
+// win it, cash J♦ early, push Q♠) by itself. Also the scripted slammer in bench.
+function slammerPolicy(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
+  const vld=getValid(hand,ls,tc);
+  if(vld.length===1)return vld[0];
+  const seen=new Set();playLog.forEach(e=>seen.add(e.card.key));tc.forEach(t=>seen.add(t.card.key));hand.forEach(c=>seen.add(c.key));
+  const boss=c=>{for(const r of RANKS){if(RO[r]>RO[c.rank]&&!seen.has(r+c.suit))return false;}return true;};
+  const hi=a=>a.reduce((x,y)=>RO[y.rank]>RO[x.rank]?y:x);
+  const lo=a=>a.reduce((x,y)=>RO[y.rank]<RO[x.rank]?y:x);
+  if(!tc.length){ // lead: boss non-hearts first (others dump hearts onto them), then top heart, then boss heart
+    const nb=vld.filter(c=>c.suit!=="♥"&&boss(c));if(nb.length)return hi(nb);
+    const hs=vld.filter(c=>c.suit==="♥");if(hs.length)return hi(hs);
+    return hi(vld);
+  }
+  const led=tc.filter(t=>t.card.suit===ls);
+  const top=led.length?Math.max(...led.map(t=>RO[t.card.rank])):0;
+  const mine=vld.filter(c=>c.suit===ls);
+  if(mine.length){ // following: win if we can — last to act takes it cheapest, else throw the top
+    const win=mine.filter(c=>RO[c.rank]>top);
+    if(win.length)return tc.length===3?lo(win):hi(win);
+    return lo(mine);
+  }
+  const junk=vld.filter(c=>c.suit!=="♥"); // void: never throw a heart away
+  return junk.length?lo(junk):lo(vld);
+}
+function mcDeal(unseen,counts,voids,qsW,hW){
   const hands=[[],[],[],[]];
   const need=counts.slice();
   let rest=unseen;
@@ -1343,6 +1449,21 @@ function mcDeal(unseen,counts,voids,qsW){
       }
     }
   }
+  // v0821.33 SLAM DEFENSE: hW = per-seat weights for the unseen HEARTS (the suspected
+  // slammer gets them ×hW) — placed first by weighted pick, rest uniform.
+  if(hW){
+    const hs=rest.filter(c=>c.suit==="♥"),rst=[];
+    for(const c of rest)if(c.suit!=="♥")rst.push(c);
+    for(const c of hs){
+      let tot=0;const el=[0,0,0,0];
+      for(let p=0;p<4;p++){el[p]=(need[p]>0&&!(voids[p]&&voids[p]["♥"]))?hW[p]:0;tot+=el[p];}
+      if(tot<=0){rst.push(c);continue;}
+      let rr=Math.random()*tot,pick=3;
+      for(let p=0;p<4;p++){rr-=el[p];if(rr<=0){pick=p;break;}}
+      hands[pick].push(c);need[pick]--;
+    }
+    rest=rst;
+  }
   const u=shuffle(rest);
   for(const c of u){
     let opts=[];
@@ -1360,12 +1481,16 @@ function mcDeal(unseen,counts,voids,qsW){
 // design (aggression/greed/caution/vindictive/slamlust) stays designed-not-active
 // pending bench. Defaults below; Supabase game_config key='bots' overrides (fail-open):
 //   {"chars":{"dang":{"blur":0.5}}, "lineup":{"100":["dang","dang","dang"]}}
+// v0821.33 boss defaults (set from bench results; remote game_config overrides per knob)
+const CAMP_DEFAULT=true;   // SPADE CAMPAIGN (posterior-gated)
+const SLAM_DEFAULT=true;   // SLAM DEFENSE package
+const HLAK_DEFAULT=false;   // หลัก-aware objective
 const BOT_CHARS={
   dang:{name:"หมูเด้ง",dealsX:0.5 ,blur:0.35,hunt:false,antiLast:false}, // มือใหม่
   tod :{name:"หมูทอด",dealsX:0.75,blur:0.15,hunt:false,antiLast:false}, // กลาง
   pa  :{name:"หมูป่า",dealsX:1.0 ,blur:0.05,hunt:true ,antiLast:false,blowGuard:true}, // ดุ
   thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false,blowGuard:true,campaign:false,huntP:0.5}, // campaign ไม่ผ่าน bench v0821.32 (-17/เกม n=134) — เปิดทดลองได้ทาง remote config  // (ตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
-  thepjab:{name:"เทพจับหมู",dealsX:1.5,blur:0,hunt:true,antiLast:false,blowGuard:true,bayes:true,campaign:false} // BOSS (v0821.31): ทุกอาวุธของหมูเทพ + deals 900 + Bayesian Q♠ read — ตัวเดียวที่จะรับอาวุธใหม่ต่อจากนี้ หมูเทพ freeze ไว้เทียบ
+  thepjab:{name:"เทพจับหมู",dealsX:1.5,blur:0,hunt:true,antiLast:false,blowGuard:true,bayes:true,campaign:CAMP_DEFAULT,campQ:0.5,slamDef:SLAM_DEFAULT,hlak:HLAK_DEFAULT} // BOSS (v0821.31) · v0821.33: campaign gated by Q♠ posterior (campQ), SLAM DEFENSE, หลัก-aware objective — defaults set by bench, all remote-overridable: ทุกอาวุธของหมูเทพ + deals 900 + Bayesian Q♠ read — ตัวเดียวที่จะรับอาวุธใหม่ต่อจากนี้ หมูเทพ freeze ไว้เทียบ
 };
 const BOT_LINEUP={100:["dang","tod","dang"],200:["tod","pa","tod"],500:["pa","thep","thepjab"]}; // v0821.31: x500 = ป่า+เทพ+เทพจับหมู (บันไดความโหด + วัดผลราย tier ได้)
 let BOT_REMOTE=null; // merged over defaults once loadBotConfig() resolves
@@ -1625,6 +1750,32 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
       }
     }
   }
+  // SLAM DEFENSE (v0821.33 — opts.slamDef): risk read once per decision.
+  const sdCfg=(opts&&opts.slamDef)?(opts.slamDef===true?{thr:0.5,pen:150,hW:3}:Object.assign({thr:0.5,pen:150,hW:3},opts.slamDef)):null;
+  const sdHum=opts?(opts.slamHumans||opts.humans||(opts.bayes&&opts.bayes.humans)||null):null;
+  const sr=sdCfg?slamRisk(allWon,playLog,tc,voids,myIdx,sdHum):null;
+  const slamOn=!!(sr&&sr.r>=sdCfg.thr);
+  // STOPPER KEEP: under live risk, when DISCARDING (void in the led suit) never throw
+  // away a BOSS card (outranks every unseen card of its suit) of a suit the slammer
+  // still follows — it is a guaranteed trick later = the stopper that eats one heart.
+  if(slamOn&&ls&&!hand.some(c=>c.suit===ls)&&vld.length>1){
+    const seenS=new Set();hand.forEach(c=>seenS.add(c.key));playLog.forEach(e=>seenS.add(e.card.key));tc.forEach(t=>seenS.add(t.card.key));
+    const bossS=c=>{for(const r of RANKS){if(RO[r]>RO[c.rank]&&!seenS.has(r+c.suit))return false;}return true;};
+    const keep=vld.filter(c=>!(c.suit!=="♥"&&bossS(c)&&!(voids[sr.seat]&&voids[sr.seat][c.suit])));
+    if(keep.length)vld=keep;
+  }
+  // FEED BAN: discarding into a trick the suspect currently wins → never a heart (the
+  // old containment needed a ≥4-heart pile; under a live tell the ban starts at 0).
+  if(slamOn&&ls&&ls!=="♥"&&tc.length&&!hand.some(c=>c.suit===ls)&&vld.length>1&&trickWin(tc,ls)===sr.seat){
+    const nh=vld.filter(c=>c.suit!=="♥");if(nh.length)vld=nh;
+  }
+  // BREAKER KEEP: following ♥ with the suspect winning and nothing that beats him →
+  // play the LOWEST heart. Dumping Q♥/J♥ under his A♥ "safely" hands him the very
+  // cards that would have been boss once his A/K are gone (the slam-sealing mistake).
+  if(slamOn&&ls==="♥"&&tc.length&&vld.length>1&&vld.every(c=>c.suit==="♥")){
+    const topH=Math.max(...tc.filter(t=>t.card.suit==="♥").map(t=>RO[t.card.rank]));
+    if(trickWin(tc,ls)===sr.seat&&!vld.some(c=>RO[c.rank]>topH))vld=[vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b)];
+  }
   if(vld.length===1)return vld[0];
   budgetMs=budgetMs||700;
   const capDeals=maxDeals||200;
@@ -1641,9 +1792,10 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
   const counts=[0,1,2,3].map(p=>p===myIdx?0:13-playedBy[p]);
   const wt0=allWon.map(a=>(a.length/4)|0);
   const qsW=(opts&&opts.bayes)?bayesQsWeights(hand,tc,playLog,voids,myIdx,opts.bayes.humans):null;
+  const hW=slamOn?[0,1,2,3].map(p=>p===sr.seat?sdCfg.hW:1):null;
   const sums=vld.map(()=>0),ns=vld.map(()=>0);
   while(Date.now()-start<budgetMs){
-    const dealHands=mcDeal(unseen,counts,voids,qsW);
+    const dealHands=mcDeal(unseen,counts,voids,qsW,hW);
     for(let ci=0;ci<vld.length;ci++){
       const hs=[0,1,2,3].map(p=>p===myIdx?hand.filter(c=>c.key!==vld[ci].key):dealHands[p].slice());
       const wc=allWon.map(a=>a.slice());
@@ -1667,7 +1819,7 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
         }
         if(hs[cur].length===0)break;
         const ls2=trick.length?trick[0].card.suit:null;
-        const card=botPlay(hs[cur],ls2,trick,wc,totals,cur,plog,vds);
+        const card=(slamOn&&cur===sr.seat)?slammerPolicy(hs[cur],ls2,trick,wc,totals,cur,plog,vds):botPlay(hs[cur],ls2,trick,wc,totals,cur,plog,vds);
         if(!card)break;
         hs[cur]=hs[cur].filter(c=>c.key!==card.key);
         if(ls2&&card.suit!==ls2)vds[cur][ls2]=true;
@@ -1678,6 +1830,20 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
       const sc=[0,1,2,3].map(p=>calcScore(wc[p],wt[p]));
       const others=(sc[0]+sc[1]+sc[2]+sc[3]-sc[myIdx])/3;
       let val=sc[myIdx]-others;
+      // SACRIFICE OBJECTIVE (v0821.33): a rollout where the suspect completes the slam
+      // costs extra on top of the raw swing — MC then hunts for the split by itself.
+      if(slamOn&&sc[sr.seat]>=194)val-=sdCfg.pen;
+      // หลัก-AWARE OBJECTIVE (v0821.33 — A: +50 for me vs pushing a victim −150→−300
+      // look identical in raw points but differ by 2 หลัก in coins). Blend the raw
+      // swing with the coin payout of the running match totals: pay = 4×หลักฉัน − Σหลัก
+      // (×100/3 puts it on the raw-points scale). MC now defends its own band edge and
+      // presses opponents hanging just above theirs. opts.hlak=true → w=0.5, or a weight.
+      if(opts&&opts.hlak){
+        const hw=opts.hlak===true?0.5:opts.hlak;
+        const hs4=[0,1,2,3].map(p=>toHsoft((totals[p]||0)+sc[p]));
+        const pay=(4*hs4[myIdx]-(hs4[0]+hs4[1]+hs4[2]+hs4[3]))*100/3;
+        val=(1-hw)*val+hw*pay;
+      }
       // ANTI-LAST OBJECTIVE (opts.antiLast — layer 3): payout is spread-based but rank
       // still matters (XP/บ๊วย). Rollouts that leave us strictly last on running match
       // totals eat a flat penalty, steering MC away from lines that save a few points
@@ -1729,6 +1895,14 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
       const canOpen=myS.length>=2&&myS.some(c=>c.rank==="A"||c.rank==="K");
       let heat=0,joined=true,TIE=8;
       if(opts.campaign){
+        // v0821.33 TARGET GATE (option B — fair to humans and bots alike): the siege
+        // needs a victim. qsPosterior = ♠-voids + hand sizes (everyone) × human tells
+        // (bayes, humans only); campaign only while ONE seat is likelier than campQ
+        // (default 0.5) to hold Q♠. No target → plain margin-8 controller hunt.
+        const post=qsPosterior(hand,tc,playLog,voids,myIdx,opts.humans||(opts.bayes&&opts.bayes.humans)||null);
+        let pm=0;if(post)for(let p=0;p<4;p++)if(post[p]>pm)pm=post[p];
+        const campQ=opts.campQ!=null?opts.campQ:0.5;
+        if(!(post&&pm>=campQ))joined=false;
         const nT=(playLog.length/4)|0;
         for(let t=0;t<nT;t++)if(playLog[t*4].card.suit==="♠")heat++;
         if(opts.huntP!=null&&opts.huntP<1){ // per-game sticky roll (hash of totals+seat)
@@ -2088,7 +2262,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
             </div>
             {showRules&&<RulesModal lang={lang} onClose={()=>setShowRules(false)}/>}
             {showHowTo&&<HowToModal lang={lang} onClose={()=>setShowHowTo(false)}/>}
-            <div style={{position:"relative",display:"flex",gap:6,margin:"6px -2px 0",paddingBottom:8,overflowX:"auto"}}>
+            <div style={{position:"relative",display:"flex",gap:5,margin:"6px -2px 0",paddingBottom:8}}>{/* v0821.33: 6 cards fit the width, no scroll */}
               {[
                 {im:JM_M_RULES,t:"กติกา",fn:()=>setShowRules(true)},
                 {im:JM_M_HOW,t:"วิธีเล่น",fn:()=>setShowHowTo(true)},
@@ -2097,10 +2271,10 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
                 {im:JM_M_PIGGY,t:"หมูของฉัน",fn:onShowCode},
                 {im:JM_M_GIFT,t:"เหรียญ",fn:()=>{if(prof)setShowCoinHist(true);else onShowCode();}}
               ].map((m,i)=>(
-                <button key={i} onClick={m.fn} style={{flex:"0 0 62px",padding:0,border:"2px solid #b4831a",borderRadius:12,cursor:"pointer",overflow:"hidden",
+                <button key={i} onClick={m.fn} style={{flex:"1 1 0",minWidth:0,padding:0,border:"2px solid #b4831a",borderRadius:10,cursor:"pointer",overflow:"hidden",
                   background:"linear-gradient(180deg,#2c1a0c,#1f1106)",boxShadow:"0 3px 0 #241203"}}>
-                  <img src={m.im} style={{width:"100%",height:54,objectFit:"cover",display:"block"}}/>
-                  <div style={{fontSize:10,fontWeight:800,color:"#ffe9a8",padding:"2px 1px 5px",textShadow:"0 1px 2px rgba(0,0,0,0.5)"}}>{m.t}</div>
+                  <img src={m.im} style={{width:"100%",aspectRatio:"1/1",objectFit:"cover",display:"block"}}/>
+                  <div style={{fontSize:9,fontWeight:800,color:"#ffe9a8",padding:"2px 0 4px",whiteSpace:"nowrap",overflow:"hidden",textShadow:"0 1px 2px rgba(0,0,0,0.5)"}}>{m.t}</div>
                 </button>
               ))}
             </div>
@@ -2203,27 +2377,50 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
 
         {/* v0821.30: "จบเกมเมื่อ" + "แสดงไพ่หลังจบตา" merged onto one row so the
             online button rises above the fold (no scroll needed to see it) */}
-        <div style={{background:"#f9fafb",borderRadius:10,padding:"0.6rem",marginBottom:"0.8rem",border:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <div style={{fontSize:12,color:"#6b7280",fontWeight:600,whiteSpace:"nowrap"}}>{L?"จบเกมเมื่อ":"End when"}</div>
-          <select value={em} onChange={e=>setEm(e.target.value)} style={SS}>
-            <option value="8games">{L?"จำนวนเกม":"By games"}</option>
-            <option value="threshold">{L?"ถึงคะแนน":"By score"}</option>
-          </select>
-          {em==="8games" && (
-            <select value={numGames} onChange={e=>setNumGames(+e.target.value)} style={SS}>
-              {[1,4,8].map(v=><option key={v} value={v}>{v} {L?"เกม":"games"}</option>)}
-            </select>
-          )}
-          {em==="threshold" && (
-            <select value={th} onChange={e=>setTh(+e.target.value)} style={SS}>
-              {[500,700,900,1000].map(v=><option key={v} value={v}>{v}</option>)}
-            </select>
-          )}
-          <div style={{fontSize:12,color:"#6b7280",fontWeight:600,whiteSpace:"nowrap",marginLeft:"auto"}}>⏱ {L?"โชว์ไพ่":"Show"}</div>
-          <select value={showSec} onChange={e=>setShowSec(+e.target.value)} style={SS}>
-            {[1,2,3,4,5].map(v=><option key={v} value={v}>{v} {L?"วิ":"sec"}</option>)}
-          </select>
-        </div>
+        {/* v0821.34 (A's mock): three gold setting cards — icon / label / value / chevron.
+            A native <select> sits invisibly over each card so a tap opens the OS picker.
+            Card 1 merges end-mode + threshold: "จำนวนเกม" or 500/700/900/1K. Card 2 dims
+            when the match ends by score (value still kept). */}
+        {(()=>{
+          const GOLD="#e8c46a";
+          const Card=({icon,label,value,children,dim})=>(
+            <div style={{flex:"1 1 0",minWidth:0,position:"relative",display:"flex",alignItems:"center",gap:4,padding:"6px 6px 6px 8px",borderRadius:14,
+              border:"2px solid #b4831a",background:"linear-gradient(180deg,#3a2410,#1e1006)",boxShadow:"0 3px 0 #150a02, inset 0 1px 0 rgba(255,220,150,0.15)",opacity:dim?0.55:1}}>
+              <div style={{width:24,flex:"0 0 24px",display:"grid",placeItems:"center"}}>{icon}</div>
+              <div style={{flex:1,minWidth:0,textAlign:"center"}}>
+                <div style={{fontSize:10,fontWeight:700,color:GOLD,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</div>
+                <div style={{fontSize:15,fontWeight:900,color:"#ffe9a8",fontFamily:"Georgia,serif",lineHeight:1.15,whiteSpace:"nowrap"}}>{value}</div>
+              </div>
+              <svg width="12" height="12" viewBox="0 0 12 12" style={{flex:"0 0 12px"}}><path d="M2 4l4 4 4-4" fill="none" stroke={GOLD} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {children}
+            </div>
+          );
+          const sel={position:"absolute",inset:0,width:"100%",height:"100%",opacity:0,cursor:"pointer",fontSize:16};
+          const IFlag=<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 21V4"/><path d="M5 4h12l-3 4 3 4H5"/></svg>;
+          const ICards=<svg width="22" height="20" viewBox="0 0 26 22" fill="none" stroke={GOLD} strokeWidth="1.8" strokeLinejoin="round"><rect x="2" y="7" width="10" height="13" rx="2" transform="rotate(-14 7 13)"/><rect x="8" y="5" width="10" height="13" rx="2" transform="rotate(-4 13 11)"/><rect x="14" y="5" width="10" height="13" rx="2" transform="rotate(8 19 11)"/></svg>;
+          const IClock=<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M12 13l3 2"/><path d="M9 2h6"/><path d="M12 2v3"/><path d="M19 5l-1.5 1.5"/></svg>;
+          const endVal=em==="8games"?(L?"จำนวนเกม":"Games"):(th>=1000?(th/1000)+"K":String(th));
+          return (
+            <div style={{display:"flex",gap:6,marginBottom:"0.8rem"}}>
+              <Card icon={IFlag} label={L?"จบเกมเมื่อ":"End when"} value={endVal}>
+                <select value={em==="8games"?"8games":String(th)} onChange={e=>{const v=e.target.value;if(v==="8games")setEm("8games");else{setEm("threshold");setTh(+v);}}} style={sel}>
+                  <option value="8games">{L?"จำนวนเกม":"By games"}</option>
+                  {[500,700,900,1000].map(v=><option key={v} value={String(v)}>{L?"ถึง ":"Score "}{v>=1000?(v/1000)+"K":v}</option>)}
+                </select>
+              </Card>
+              <Card icon={ICards} label={L?"จำนวนเกม":"Games"} value={numGames+" "+(L?"เกม":"")} dim={em!=="8games"}>
+                <select value={numGames} onChange={e=>{setNumGames(+e.target.value);setEm("8games");}} style={sel}>
+                  {[1,4,8].map(v=><option key={v} value={v}>{v} {L?"เกม":"games"}</option>)}
+                </select>
+              </Card>
+              <Card icon={IClock} label={L?"โชว์ไพ่":"Show cards"} value={showSec+" "+(L?"วิ":"s")}>
+                <select value={showSec} onChange={e=>setShowSec(+e.target.value)} style={sel}>
+                  {[1,2,3,4,5].map(v=><option key={v} value={v}>{v} {L?"วิ":"sec"}</option>)}
+                </select>
+              </Card>
+            </div>
+          );
+        })()}
 
         {/* v0821.30: mode cards side-by-side (A: keep online above the fold) */}
         <div style={{display:"flex",gap:8}}>
@@ -2655,7 +2852,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           const S3=sRef.current;
           if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
           const t0=Date.now();
-          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false,bayes:bc.bayes?{humans:cfg.players.map(pl=>!pl.isBot)}:false,campaign:!!bc.campaign,huntP:bc.huntP});
+          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false,bayes:bc.bayes?{humans:cfg.players.map(pl=>!pl.isBot)}:false,humans:cfg.players.map(pl=>!pl.isBot),campaign:!!bc.campaign,campQ:bc.campQ,huntP:bc.huntP,slamDef:bc.slamDef||false,hlak:bc.hlak||false});
           // MIN TURN TIME (v0821.18): the MC budget is a CEILING — forced plays and
           // cheap late tricks finish in milliseconds and looked jarringly fast at
           // x500. Pad the play-back so every turn takes ≥ ~0.68s from schedule;
