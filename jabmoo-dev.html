@@ -50,7 +50,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.34-dev-dev-dev";
+  var VER="v0821.35-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2467,12 +2467,12 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
   const s=[...players.map((p,i)=>({...p,score:totals[i],h:toH(totals[i]),coin:cc?cc.net[i]:null,coinRake:cc?cc.rake[i]:0}))].sort((a,b)=>b.score-a.score);
   const COLW=cc?"repeat(4,minmax(46px,auto))":"repeat(3,minmax(48px,auto))";
   return (
-    <div style={{minHeight:"100vh",height:"100dvh",background:"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"calc(1rem + env(safe-area-inset-top)) 1rem calc(1rem + env(safe-area-inset-bottom))",overflowY:"auto"}}>
+    <div style={{minHeight:"100vh",height:"100dvh",background:"#08251b",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"calc(1rem + env(safe-area-inset-top)) 1rem calc(1rem + env(safe-area-inset-bottom))",overflowY:"auto"}}>
       {confetti.map((c,i)=><span key={i} className="confetti" style={{left:c.l+"%",animationDuration:c.d+"s",animationDelay:c.dl+"s"}}>{c.e}</span>)}
-      <div style={{width:"100%",maxWidth:420,background:"#fff",borderRadius:16,padding:"1.5rem",border:"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.1)",textAlign:"center",marginTop:"0.5rem",marginBottom:"0.5rem"}}>
+      <div style={{width:"100%",maxWidth:420,background:"#0b3d2e",borderRadius:16,padding:"1.5rem",border:"2px solid #d4af37",boxShadow:"0 4px 24px rgba(0,0,0,0.45)",textAlign:"center",marginTop:"0.5rem",marginBottom:"0.5rem"}}>
         <div style={{fontSize:38,marginBottom:8}}>🏆</div>
-        <div style={{fontSize:24,fontWeight:700,color:"#1e3a5f",fontFamily:"Georgia,serif",marginBottom:4}}>{L?"จบเกม!":"Game Over!"}</div>
-        <div style={{fontSize:15,color:"#059669",marginBottom:"1.2rem"}}>{L?"ผู้ชนะ":"Winner"}: {s[0].name}</div>
+        <div style={{fontSize:24,fontWeight:700,color:"#f4d47a",fontFamily:"Georgia,serif",marginBottom:4}}>{L?"จบเกม!":"Game Over!"}</div>
+        <div style={{fontSize:15,color:"#a7f3d0",marginBottom:"1.2rem"}}>{L?"ผู้ชนะ":"Winner"}: {s[0].name}</div>
         {(()=>{
           const spreads=calcSpread(s.map(p=>p.h));
           const medals=["🥇","🥈","🥉"];
@@ -2497,66 +2497,66 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
               <path d="M24 48 Q30 53 36 48" fill="none" stroke="#c0607a" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           );
-          const hd=(t)=><span style={{fontSize:9,fontWeight:700,color:"#9ca3af",textAlign:"right"}}>{t}</span>;
+          const hd=(t)=><span style={{fontSize:9,fontWeight:700,color:"#8fb0a1",textAlign:"right"}}>{t}</span>;
           return (<React.Fragment>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 16px 4px"}}>
-              <span style={{fontSize:9,fontWeight:700,color:"#9ca3af"}}>{L?"ผู้เล่น":"Player"}</span>
+              <span style={{fontSize:9,fontWeight:700,color:"#8fb0a1"}}>{L?"ผู้เล่น":"Player"}</span>
               <div style={{display:"grid",gridTemplateColumns:COLW,gap:2}}>
                 {hd(L?"คะแนน":"Score")}{hd(L?"หลัก":"Units")}{hd(L?"ได้เสีย":"±Units")}{cc?hd("💰 coin"):null}
               </div>
             </div>
             {s.map((p,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 12px 11px 16px",marginBottom:7,background:i===0?"#eff6ff":"#f9fafb",borderRadius:10,border:"1.5px solid",borderColor:i===0?"#3b82f6":"#e5e7eb"}}>
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 12px 11px 16px",marginBottom:7,background:i===0?"rgba(212,175,55,0.16)":"rgba(255,255,255,0.06)",borderRadius:10,border:"1.5px solid",borderColor:i===0?"#d4af37":"rgba(212,175,55,0.3)"}}>
               <div style={{display:"flex",gap:8,alignItems:"center",minWidth:0}}>
                 {i<3
                   ? <span style={{fontSize:22}}>{medals[i]}</span>
                   : <PigFace/>
                 }
-                <span style={{color:"#111827",fontSize:14,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                <span style={{color:"#fff",fontSize:14,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
               </div>
               <div style={{display:"grid",gridTemplateColumns:COLW,gap:2,alignItems:"center"}}>
-                <span style={{fontSize:14,fontWeight:700,textAlign:"right",color:p.score>0?"#059669":p.score<0?"#dc2626":"#6b7280"}}>{p.score>0?"+":""}{p.score}</span>
-                <span style={{fontSize:14,fontWeight:600,textAlign:"right",color:"#9ca3af"}}>{p.h>0?"+":""}{p.h}</span>
-                <span style={{fontSize:14,fontWeight:600,textAlign:"right",color:spreads[i]>0?"#059669":spreads[i]<0?"#dc2626":"#9ca3af"}}>{spreads[i]>0?"+":""}{spreads[i]}</span>
-                {cc?<span title={p.coinRake?("ต๋ง "+p.coinRake):""} style={{fontSize:14,fontWeight:800,textAlign:"right",color:p.coin>0?"#059669":p.coin<0?"#dc2626":"#9ca3af"}}>{p.coin>0?"+":""}{p.coin.toLocaleString()}</span>:null}
+                <span style={{fontSize:14,fontWeight:700,textAlign:"right",color:p.score>0?"#34d399":p.score<0?"#f87171":"#9fb8aa"}}>{p.score>0?"+":""}{p.score}</span>
+                <span style={{fontSize:14,fontWeight:600,textAlign:"right",color:"#9fb8aa"}}>{p.h>0?"+":""}{p.h}</span>
+                <span style={{fontSize:14,fontWeight:600,textAlign:"right",color:spreads[i]>0?"#34d399":spreads[i]<0?"#f87171":"#9fb8aa"}}>{spreads[i]>0?"+":""}{spreads[i]}</span>
+                {cc?<span title={p.coinRake?("ต๋ง "+p.coinRake):""} style={{fontSize:14,fontWeight:800,textAlign:"right",color:p.coin>0?"#34d399":p.coin<0?"#f87171":"#9fb8aa"}}>{p.coin>0?"+":""}{p.coin.toLocaleString()}</span>:null}
               </div>
             </div>
             ))}
-            {cc&&<div style={{textAlign:"right",fontSize:9,color:"#9ca3af",padding:"0 16px",marginTop:-2,marginBottom:6}}>{L?("coin หักต๋ง 15% ฝั่งได้แล้ว · หลัก ×"+(coinMult||100)):("coin after 15% rake · ×"+(coinMult||100)+"/unit")}</div>}
+            {cc&&<div style={{textAlign:"right",fontSize:9,color:"#8fb0a1",padding:"0 16px",marginTop:-2,marginBottom:6}}>{L?("coin หักต๋ง 15% ฝั่งได้แล้ว · หลัก ×"+(coinMult||100)):("coin after 15% rake · ×"+(coinMult||100)+"/unit")}</div>}
           </React.Fragment>);
         })()}
         {/* History toggle */}
         <div style={{display:"flex",gap:8,marginTop:"1rem"}}>
-          <button onClick={()=>setShowHist(h=>!h)} style={{flex:1,padding:10,background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,fontSize:13,fontWeight:600,color:"#374151",cursor:"pointer"}}>
+          <button onClick={()=>setShowHist(h=>!h)} style={{flex:1,padding:10,background:"rgba(255,255,255,0.08)",border:"1px solid rgba(212,175,55,0.4)",borderRadius:10,fontSize:13,fontWeight:600,color:"#e6efe9",cursor:"pointer"}}>
             {showHist?(L?"ซ่อนประวัติ":"Hide history"):(L?"📊 ดูคะแนนแต่ละเกม":"📊 Score History")}
           </button>
-          {getLog&&<button onClick={copyLog} style={{padding:"10px 14px",background:logCopied?"#dcfce7":"#f9fafb",border:"1px solid "+(logCopied?"#16a34a":"#e5e7eb"),borderRadius:10,fontSize:13,fontWeight:600,color:logCopied?"#16a34a":"#374151",cursor:"pointer",whiteSpace:"nowrap"}}>
+          {getLog&&<button onClick={copyLog} style={{padding:"10px 14px",background:logCopied?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.08)",border:"1px solid "+(logCopied?"#34d399":"rgba(212,175,55,0.4)"),borderRadius:10,fontSize:13,fontWeight:600,color:logCopied?"#34d399":"#e6efe9",cursor:"pointer",whiteSpace:"nowrap"}}>
             {logCopied?"✓":(L?"📋 log":"📋 log")}
           </button>}
         </div>
 
         {showHist && history && history.length>0 && (
-          <div style={{marginTop:10,overflowX:"auto",borderRadius:10,border:"1px solid #e5e7eb"}}>
+          <div style={{marginTop:10,overflowX:"auto",borderRadius:10,border:"1px solid rgba(212,175,55,0.35)"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
-                <tr style={{background:"#f9fafb"}}>
-                  <th style={{padding:"6px 8px",textAlign:"left",color:"#6b7280",fontWeight:700,borderBottom:"1px solid #e5e7eb"}}>{L?"เกม":"Game"}</th>
-                  {players.map((p,i)=><th key={i} style={{padding:"6px 8px",textAlign:"right",color:"#6b7280",fontWeight:700,borderBottom:"1px solid #e5e7eb"}}>{p.name}</th>)}
+                <tr style={{background:"rgba(255,255,255,0.06)"}}>
+                  <th style={{padding:"6px 8px",textAlign:"left",color:"#8fb0a1",fontWeight:700,borderBottom:"1px solid rgba(212,175,55,0.3)"}}>{L?"เกม":"Game"}</th>
+                  {players.map((p,i)=><th key={i} style={{padding:"6px 8px",textAlign:"right",color:"#8fb0a1",fontWeight:700,borderBottom:"1px solid rgba(212,175,55,0.3)"}}>{p.name}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {history.map((row,ri)=>(
-                  <tr key={ri} style={{borderBottom:"1px solid #f3f4f6",background:ri%2===0?"#fff":"#f9fafb"}}>
-                    <td style={{padding:"6px 8px",color:"#374151",fontWeight:600}}>{row.game}</td>
+                  <tr key={ri} style={{borderBottom:"1px solid rgba(255,255,255,0.06)",background:ri%2===0?"transparent":"rgba(255,255,255,0.04)"}}>
+                    <td style={{padding:"6px 8px",color:"#cfe3d8",fontWeight:600}}>{row.game}</td>
                     {row.scores.map((sc,si)=>(
-                      <td key={si} style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:sc>0?"#059669":sc<0?"#dc2626":"#9ca3af"}}>{sc>0?"+":""}{sc}</td>
+                      <td key={si} style={{padding:"6px 8px",textAlign:"right",fontWeight:700,color:sc>0?"#34d399":sc<0?"#f87171":"#9fb8aa"}}>{sc>0?"+":""}{sc}</td>
                     ))}
                   </tr>
                 ))}
-                <tr style={{background:"#eff6ff",borderTop:"2px solid #3b82f6"}}>
-                  <td style={{padding:"6px 8px",color:"#1d4ed8",fontWeight:700}}>{L?"รวม":"Total"}</td>
+                <tr style={{background:"rgba(212,175,55,0.16)",borderTop:"2px solid #d4af37"}}>
+                  <td style={{padding:"6px 8px",color:"#fde68a",fontWeight:700}}>{L?"รวม":"Total"}</td>
                   {totals.map((t,ti)=>(
-                    <td key={ti} style={{padding:"6px 8px",textAlign:"right",fontWeight:800,color:t>0?"#059669":t<0?"#dc2626":"#9ca3af"}}>{t>0?"+":""}{t}</td>
+                    <td key={ti} style={{padding:"6px 8px",textAlign:"right",fontWeight:800,color:t>0?"#34d399":t<0?"#f87171":"#9fb8aa"}}>{t>0?"+":""}{t}</td>
                   ))}
                 </tr>
               </tbody>
@@ -2564,11 +2564,11 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
           </div>
         )}
 
-        <button onClick={onAgain} style={{marginTop:"1rem",width:"100%",padding:13,background:"#3b82f6",border:"none",borderRadius:10,fontSize:15,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+        <button onClick={onAgain} style={{marginTop:"1rem",width:"100%",padding:13,background:"#d4af37",border:"none",borderRadius:10,fontSize:15,fontWeight:800,color:"#1a2e1a",cursor:"pointer"}}>
           {L?"เล่นอีกรอบ":"Play Again"}
         </button>
         {onHome&&(
-          <button onClick={onHome} style={{marginTop:"0.6rem",width:"100%",padding:12,background:"#fff",border:"1.5px solid #3b82f6",borderRadius:10,fontSize:14,fontWeight:700,color:"#3b82f6",cursor:"pointer"}}>
+          <button onClick={onHome} style={{marginTop:"0.6rem",width:"100%",padding:12,background:"transparent",border:"1.5px solid #d4af37",borderRadius:10,fontSize:14,fontWeight:700,color:"#fde68a",cursor:"pointer"}}>
             {L?"🏠 กลับหน้าแรก / ดูอันดับ":"🏠 Home / My Rank"}
           </button>
         )}
@@ -4817,17 +4817,17 @@ function JmSection({icon,title,children}){
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}>
         <span style={{fontSize:17}}>{icon}</span>
-        <span style={{fontSize:14,fontWeight:800,color:"#1e3a5f"}}>{title}</span>
+        <span style={{fontSize:14,fontWeight:800,color:"#fde68a"}}>{title}</span>
       </div>
-      <div style={{fontSize:12.5,lineHeight:1.75,color:"#374151"}}>{children}</div>
+      <div style={{fontSize:12.5,lineHeight:1.75,color:"#e6efe9"}}>{children}</div>
     </div>
   );
 }
 function JmCardRow({label,cards,val,color,note}){
   return (
-    <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 9px",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:9,marginBottom:5}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 9px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(212,175,55,0.3)",borderRadius:9,marginBottom:5}}>
       <span style={{fontSize:16,minWidth:52,fontWeight:800,letterSpacing:1}}>{cards}</span>
-      <span style={{flex:1,fontSize:11.5,color:"#4b5563"}}>{label}{note&&<span style={{color:"#9ca3af"}}> · {note}</span>}</span>
+      <span style={{flex:1,fontSize:11.5,color:"#cfe3d8"}}>{label}{note&&<span style={{color:"#8fb0a1"}}> · {note}</span>}</span>
       <span style={{fontSize:13,fontWeight:900,color:color}}>{val}</span>
     </div>
   );
@@ -4835,15 +4835,15 @@ function JmCardRow({label,cards,val,color,note}){
 function JmModal({title,sub,onClose,children}){
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:60,display:"flex",alignItems:"center",justifyContent:"center",padding:14}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:430,maxHeight:"86vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
-        <div style={{padding:"13px 16px 11px",background:"linear-gradient(135deg,#1e3a5f,#2b5288)",color:"#fff",display:"flex",alignItems:"center"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0b3d2e",border:"2px solid #d4af37",borderRadius:16,width:"100%",maxWidth:430,maxHeight:"86vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+        <div style={{padding:"13px 16px 11px",background:"linear-gradient(135deg,#0a2e22,#134d3a)",borderBottom:"1px solid rgba(212,175,55,0.45)",color:"#f4d47a",display:"flex",alignItems:"center"}}>
           <div style={{flex:1}}>
             <div style={{fontSize:16,fontWeight:800,fontFamily:"Georgia,serif"}}>{title}</div>
             {sub&&<div style={{fontSize:10.5,opacity:0.75,marginTop:1}}>{sub}</div>}
           </div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:28,height:28,borderRadius:14,fontSize:14,cursor:"pointer"}}>✕</button>
         </div>
-        <div style={{padding:"14px 16px",overflowY:"auto"}}>{children}</div>
+        <div style={{padding:"14px 16px",overflowY:"auto",color:"#e6efe9"}}>{children}</div>
       </div>
     </div>
   );
@@ -4856,18 +4856,18 @@ function RulesModal({lang,onClose}){
         หลีกเลี่ยงการกิน<b>ไพ่ติดลบ</b> (หัวใจทุกใบ และ Q♠ "หมู") และพยายามคว้า<b>ไพ่บวก</b> (J♦) — จบแต่ละเกม คะแนนมากสุดชนะ
       </JmSection>
       <JmSection icon="🃏" title="ไพ่คะแนน">
-        <JmCardRow cards="♥2-♥10" label="หัวใจเล็ก" note="ติดลบตามหน้าไพ่" val="−2 ถึง −10" color="#dc2626"/>
-        <JmCardRow cards="♥J ♥Q ♥K" label="หัวใจใหญ่" val="−20 / −30 / −40" color="#dc2626"/>
-        <JmCardRow cards="♥A" label="เอซหัวใจ" val="−50" color="#dc2626"/>
-        <JmCardRow cards="♠Q" label="หมู 🐷" note="ใบเดียวหนักสุด" val="−100" color="#dc2626"/>
-        <JmCardRow cards="♦J" label="🐐" note="ใบเดียวที่เป็นบวก" val="+100" color="#059669"/>
-        <JmCardRow cards="♣10" label="ตัวคูณ ✖️" note="คูณยอดที่เก็บได้ ×2" val="×2" color="#b45309"/>
-        <div style={{fontSize:11,color:"#6b7280",marginTop:3}}>ถ้า ♣10 เป็นไพ่คะแนน<b>ใบเดียว</b>ที่คุณกินทั้งเกม → ได้ <b style={{color:"#059669"}}>+50</b> แทน</div>
+        <JmCardRow cards="♥2-♥10" label="หัวใจเล็ก" note="ติดลบตามหน้าไพ่" val="−2 ถึง −10" color="#f87171"/>
+        <JmCardRow cards="♥J ♥Q ♥K" label="หัวใจใหญ่" val="−20 / −30 / −40" color="#f87171"/>
+        <JmCardRow cards="♥A" label="เอซหัวใจ" val="−50" color="#f87171"/>
+        <JmCardRow cards="♠Q" label="หมู 🐷" note="ใบเดียวหนักสุด" val="−100" color="#f87171"/>
+        <JmCardRow cards="♦J" label="🐐" note="ใบเดียวที่เป็นบวก" val="+100" color="#34d399"/>
+        <JmCardRow cards="♣10" label="ตัวคูณ ✖️" note="คูณยอดที่เก็บได้ ×2" val="×2" color="#fbbf24"/>
+        <div style={{fontSize:11,color:"#8fb0a1",marginTop:3}}>ถ้า ♣10 เป็นไพ่คะแนน<b>ใบเดียว</b>ที่คุณกินทั้งเกม → ได้ <b style={{color:"#34d399"}}>+50</b> แทน</div>
       </JmSection>
       <JmSection icon="💥" title="กรณีพิเศษ">
-        <div style={{marginBottom:4}}>🚫 <b>ไม่กินกองเลย</b> หรือไม่กินไพ่คะแนนเลยทั้งเกม → <b style={{color:"#dc2626"}}>−50</b> (ห้ามหลบสุดโต่ง!)</div>
-        <div style={{marginBottom:4}}>💣 <b>ช้วน(Slam)</b> — กินหัวใจครบทั้ง 13 ใบคนเดียว: หัวใจพลิกเป็น <b style={{color:"#059669"}}>+194</b> (+100 ถ้าได้ ♦J, −100 ถ้าติด ♠Q, แล้วค่อย ×2 ถ้ามี ♣10)</div>
-        <div>👑 <b>บิ๊กช้วน(SuperSlam)</b> — กวาดหัวใจครบ + ♠Q + ♦J + ♣10 ทั้งหมดคนเดียว = <b style={{color:"#b45309"}}>+788</b></div>
+        <div style={{marginBottom:4}}>🚫 <b>ไม่กินกองเลย</b> หรือไม่กินไพ่คะแนนเลยทั้งเกม → <b style={{color:"#f87171"}}>−50</b> (ห้ามหลบสุดโต่ง!)</div>
+        <div style={{marginBottom:4}}>💣 <b>ช้วน(Slam)</b> — กินหัวใจครบทั้ง 13 ใบคนเดียว: หัวใจพลิกเป็น <b style={{color:"#34d399"}}>+194</b> (+100 ถ้าได้ ♦J, −100 ถ้าติด ♠Q, แล้วค่อย ×2 ถ้ามี ♣10)</div>
+        <div>👑 <b>บิ๊กช้วน(SuperSlam)</b> — กวาดหัวใจครบ + ♠Q + ♦J + ♣10 ทั้งหมดคนเดียว = <b style={{color:"#fbbf24"}}>+788</b></div>
       </JmSection>
       <JmSection icon="🪙" title="หลัก & coin">
         คะแนนสะสมจบแมตช์ถูกแปลงเป็น "หลัก": เศษ ±50 ไม่ปัดขึ้น — <b>151 = 2 หลัก แต่ 150 = 1 หลัก</b> · ได้เสีย = (4×หลักตัวเอง − รวมทั้งโต๊ะ) × ตัวคูณโต๊ะ · ฝั่งได้จ่ายต๋ง 15% เข้ากองกลาง
@@ -4878,7 +4878,7 @@ function RulesModal({lang,onClose}){
           <JmSection icon="🏳️" title="ออกก่อนจบ / ยอมแพ้">
         <div style={{marginBottom:4}}>• กด <b>ยอมแพ้</b> หรือออกกลางเกม → <b>บอทเล่นแทนเรา</b>จนจบเกมนั้น แล้วคิดเหรียญตามผลจริงบนโต๊ะ</div>
         <div style={{marginBottom:4}}>• ถ้าคำนวณแทนไม่ได้ คะแนนเกมนั้น = <b>เท่าผู้เล่นที่ต่ำสุด</b>ของโต๊ะ</div>
-        <div style={{marginBottom:4}}>• สถิติ: นับเป็น 1 เกม อันดับ = <b style={{color:"#dc2626"}}>บ๊วย</b> · <b>ไม่ได้ XP</b> · นับ "ยอมแพ้" +1 ในประวัติ</div>
+        <div style={{marginBottom:4}}>• สถิติ: นับเป็น 1 เกม อันดับ = <b style={{color:"#f87171"}}>บ๊วย</b> · <b>ไม่ได้ XP</b> · นับ "ยอมแพ้" +1 ในประวัติ</div>
         <div>• เล่นกับเพื่อน: อย่าปิดแอปกลางเกม — โต๊ะจะค้างรอ และเหรียญของแมตช์นั้นอาจไม่ถูกบันทึกครบ (ระบบออนไลน์ยังเบต้า)</div>
       </JmSection>
 </JmModal>
@@ -4889,8 +4889,8 @@ function HowToModal({lang,onClose}){
     <div style={{display:"flex",gap:10,marginBottom:12}}>
       <div style={{minWidth:26,height:26,borderRadius:13,background:"linear-gradient(135deg,#f59e0b,#b45309)",color:"#fff",fontWeight:900,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>{n}</div>
       <div style={{flex:1}}>
-        <div style={{fontSize:13,fontWeight:800,color:"#1e3a5f",marginBottom:2}}>{t}</div>
-        <div style={{fontSize:12,lineHeight:1.7,color:"#4b5563"}}>{children}</div>
+        <div style={{fontSize:13,fontWeight:800,color:"#fde68a",marginBottom:2}}>{t}</div>
+        <div style={{fontSize:12,lineHeight:1.7,color:"#e6efe9"}}>{children}</div>
       </div>
     </div>
   );
