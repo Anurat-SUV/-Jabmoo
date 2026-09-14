@@ -56,7 +56,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.41-dev";
+  var VER="v0821.42-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3302,6 +3302,14 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // ── EMOTES ────────────────────────────────────────────────────
   const [emotes,setEmotes]=useState([]); // {seat,emoji,id}
   const [emoteOpen,setEmoteOpen]=useState(false);
+  // v0821.42-dev: measure top/bottom seat blocks (name+chip+avatar+scored cards) so trick cards
+  // clear them even when the scored-card box wraps to 2 rows — refs are null in landscape (skip)
+  const [seatH,setSeatH]=useState({t:0,b:0});
+  const topSeatRef=useRef(null), botSeatRef=useRef(null);
+  useEffect(()=>{
+    const t=topSeatRef.current?topSeatRef.current.offsetHeight:0, b=botSeatRef.current?botSeatRef.current.offsetHeight:0;
+    if(t!==seatH.t||b!==seatH.b)setSeatH({t,b});
+  });
   function showEmote(seat,emoji){
     const id=Math.random().toString(36).slice(2,8);
     setEmotes(e=>[...e,{seat,emoji,id}]);
@@ -3892,7 +3900,9 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const hasSC=(i)=>S.wonCards[i].some(c=>isSC(c));
         // seat block = max(avatar, name+score+chip); trick card clears it (+ the scored-card box if any)
         const blockH=Math.max(avaSz,Math.round(52*Math.min(k+0.15,1))), scBox=44;
-        const topOff=6+blockH+(hasSC(2)?scBox+Math.round(tH2*0.2):0)+6, botOff=8+blockH+scBox+16+Math.round(tH2*0.4); // bottom is fixed — never shifts when we win scored cards
+        // reserve one scored-card row so the cards don't jump when the first scored card lands;
+        // grow beyond that only if the measured seat block is taller (2-row box) — never overlap
+        const topOff=6+Math.max(blockH+scBox,seatH.t)+8, botOff=8+Math.max(blockH+scBox,seatH.b)+8;
         const SP2=[
           {bottom:botOff,left:"50%",transform:"translateX(-50%)"},
           {right:sideW+6,top:"50%",transform:"translateY(-50%)"},
@@ -3905,7 +3915,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-52%)",fontSize:Math.round(160*Math.min(sf,1.6)),color:"rgba(0,0,0,0.24)",pointerEvents:"none",lineHeight:1,fontFamily:"Georgia,serif"}}>♠</div>
 
             {/* TOP seat — pl[2] */}
-            <div style={{position:"absolute",top:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"72%"}}>
+            <div ref={topSeatRef} style={{position:"absolute",top:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"72%"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:"100%"}}>
                 <SeatTag i={2}/>
                 <Ava i={2} size={avaSz}/>
@@ -3931,7 +3941,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             </div>
 
             {/* BOTTOM seat — pl[0] (me) */}
-            <div style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"72%"}}>
+            <div ref={botSeatRef} style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"72%"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:"100%"}}>
                 <Ava i={0} size={avaSz}/>
                 <SeatTag i={0}/>
