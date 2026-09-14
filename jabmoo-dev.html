@@ -56,7 +56,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.39-dev";
+  var VER="v0821.40-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3872,9 +3872,9 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               <span style={{fontSize:13,fontWeight:800,color:cur?"#fde68a":"#f3e9c8",textShadow:"0 1px 3px rgba(0,0,0,0.8)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%",lineHeight:1.15}}>{pl[i].name}{i===0?" ★":""}</span>
               {/* v0821.37-dev: match total / this game — replaces the old strip above the table */}
               <span style={{display:"inline-flex",alignItems:"center",gap:3,background:"rgba(0,0,0,0.42)",border:"1px solid rgba(212,175,55,0.35)",borderRadius:8,padding:"0 5px",whiteSpace:"nowrap",lineHeight:1.35}}>
-                <span style={{fontSize:12,fontWeight:800,color:tot>0?"#34d399":tot<0?"#f87171":"#cbd5c5"}}>{tot>0?"+":""}{tot}</span>
+                <span style={{fontSize:13,fontWeight:700,color:cg>0?"#67e8f9":cg<0?"#fb7185":"#8fb0a1"}}>{cg>0?"+":""}{cg}</span>
                 <span style={{fontSize:9,color:"rgba(212,175,55,0.5)"}}>|</span>
-                <span style={{fontSize:11,fontWeight:700,color:cg>0?"#67e8f9":cg<0?"#fb7185":"#8fb0a1"}}>{cg>0?"+":""}{cg}</span>
+                <span style={{fontSize:14,fontWeight:800,color:tot>0?"#34d399":tot<0?"#f87171":"#cbd5c5"}}>{tot>0?"+":""}{tot}</span>
               </span>
               <SeatChip i={i}/>
             </div>
@@ -3883,7 +3883,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const Stack=({i,vert})=>(
           <div style={{display:"flex",flexDirection:vert?"column":"row",alignItems:"center",justifyContent:"center"}}>
             {/* v0821.38-dev: thin "deck" look — many visible card edges inside a ~2-card footprint */}
-            {(()=>{const n=Math.min(6,S.hands[i].length),st=Math.max(2,Math.round((vert?bkH:bkW)*0.16));
+            {(()=>{const n=Math.min(6,S.hands[i].length),st=Math.max(1,Math.round((vert?bkH:bkW)*0.06));
               return Array(n).fill(0).map((_,k)=><div key={k} style={vert?{marginTop:k>0?st-bkH:0}:{marginLeft:k>0?st-bkW:0}}><CB bk={cbKey} w={bkW} h={bkH}/></div>);})()}
           </div>
         );
@@ -3892,7 +3892,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const hasSC=(i)=>S.wonCards[i].some(c=>isSC(c));
         // seat block = max(avatar, name+score+chip); trick card clears it (+ the scored-card box if any)
         const blockH=Math.max(avaSz,Math.round(52*Math.min(k+0.15,1))), scBox=44;
-        const topOff=6+blockH+(hasSC(2)?scBox:0)+6, botOff=8+blockH+(hasSC(0)?scBox:0)+16;
+        const topOff=6+blockH+(hasSC(2)?scBox+Math.round(tH2*0.2):0)+6, botOff=8+blockH+scBox+16+Math.round(tH2*0.4); // bottom is fixed — never shifts when we win scored cards
         const SP2=[
           {bottom:botOff,left:"50%",transform:"translateX(-50%)"},
           {right:sideW+6,top:"50%",transform:"translateY(-50%)"},
