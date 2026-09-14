@@ -56,7 +56,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.37-dev";
+  var VER="v0821.38-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3842,19 +3842,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         </div>
       </div>
 
-      <div style={{background:PNL,display:"flex",borderBottom:"1px solid "+BRD,flexShrink:0}}>
-        {pl.map((p,i)=>(
-          <div key={i} style={{flex:1,textAlign:"center",padding:"4px 2px",borderLeft:i>0?"1px solid "+BRD:"none",background:i===S.curIdx?"rgba(212,175,55,0.14)":"transparent"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"0 2px"}}>
-              <span style={{width:20,height:20,borderRadius:10,background:SEATCOL[i],color:"#fff",fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:i===S.curIdx?"2px solid #d4af37":"2px solid transparent",animation:i===S.curIdx?"goldPulse 1.2s infinite":"none"}}>{(p.name||"?").trim().charAt(0).toUpperCase()}</span>
-              <span style={{fontSize:12,fontWeight:700,color:i===S.curIdx?"#d4af37":TXT,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}{i===0?" ★":""}</span>
-            </div>
-            <div style={{fontSize:15,fontWeight:700,color:S.totals[i]>0?"#059669":S.totals[i]<0?"#dc2626":"#374151"}}>{S.totals[i]>0?"+":""}{S.totals[i]}</div>
-            <div style={{fontSize:15,fontWeight:700,color:cgS[i]>0?"#0891b2":cgS[i]<0?"#e11d48":"#9ca3af"}}>{cgS[i]>0?"+":""}{cgS[i]}</div>
-            <div style={{fontSize:10,color:"#9ca3af"}}>{totalTxt}/{curTxt}</div>
-          </div>
-        ))}
-      </div>
+      {/* v0821.37-dev: top scoreboard strip removed — each seat now shows total/this-game above its Lv chip */}
 
       {/* v0821.36-dev: TABLE STAGE — A's felt art full-bleed (TABLE_BG), 4 seats overlaid on the
           wood rail (mock 2026-09-13). Replaces the old top-row + 3-column layout. Seat 0's name /
@@ -3878,9 +3866,16 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         };
         const SeatTag=({i})=>{
           const cur=i===S.curIdx&&S.phase==="playing";
+          const tot=S.totals[i], cg=cgS[i];
           return (
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:0,maxWidth:"100%"}}>
               <span style={{fontSize:13,fontWeight:800,color:cur?"#fde68a":"#f3e9c8",textShadow:"0 1px 3px rgba(0,0,0,0.8)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%",lineHeight:1.15}}>{pl[i].name}{i===0?" ★":""}</span>
+              {/* v0821.37-dev: match total / this game — replaces the old strip above the table */}
+              <span style={{display:"inline-flex",alignItems:"center",gap:3,background:"rgba(0,0,0,0.42)",border:"1px solid rgba(212,175,55,0.35)",borderRadius:8,padding:"0 5px",whiteSpace:"nowrap",lineHeight:1.35}}>
+                <span style={{fontSize:12,fontWeight:800,color:tot>0?"#34d399":tot<0?"#f87171":"#cbd5c5"}}>{tot>0?"+":""}{tot}</span>
+                <span style={{fontSize:9,color:"rgba(212,175,55,0.5)"}}>|</span>
+                <span style={{fontSize:11,fontWeight:700,color:cg>0?"#67e8f9":cg<0?"#fb7185":"#8fb0a1"}}>{cg>0?"+":""}{cg}</span>
+              </span>
               <SeatChip i={i}/>
             </div>
           );
