@@ -56,7 +56,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.36-dev";
+  var VER="v0821.37-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3893,7 +3893,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         // trick cards hug each player's edge of the felt (like the old table): offsets clear the
         // seat block (name/chip/avatar row) plus the scored-card box when that seat has one
         const hasSC=(i)=>S.wonCards[i].some(c=>isSC(c));
-        const seatTB=Math.round(60*k), topOff=seatTB+(hasSC(2)?60:0), bubbleTop=topOff+tH2+12;
+        const seatTB=Math.round(60*k), topOff=seatTB+(hasSC(2)?60:0);
         const SP2=[
           {bottom:Math.round(58*k)+(hasSC(0)?60:0),left:"50%",transform:"translateX(-50%)"},
           {right:sideW+6,top:"50%",transform:"translateY(-50%)"},
@@ -3949,17 +3949,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
             {/* CENTER — trick cards + lead/toast bubble */}
             <div style={{position:"absolute",inset:0,zIndex:6,pointerEvents:"none"}}>
-              {S.toast.msg ? (
-                <div style={{position:"absolute",top:bubbleTop,left:"50%",transform:"translateX(-50%)",background:"rgba(4,30,20,0.92)",border:"1px solid rgba(212,175,55,0.45)",borderRadius:20,padding:"5px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 10px rgba(0,0,0,0.4)",pointerEvents:"none",textAlign:"center",maxWidth:"96vw",overflow:"hidden",textOverflow:"ellipsis"}}>
-                  <span style={{fontSize:13,color:"#fff",fontWeight:700}}>{S.toast.msg}</span>
-                </div>
-              ) : ls ? (
-                <div style={{position:"absolute",top:bubbleTop,left:"50%",transform:"translateX(-50%)",background:"rgba(255,255,255,0.95)",borderRadius:20,padding:"4px 14px",zIndex:30,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",pointerEvents:"none"}}>
-                  <span style={{fontSize:13,color:"#1e3a5f",fontWeight:700}}>{pl[S.leadIdx].name}</span>
-                  <span style={{fontSize:12,color:"#9ca3af"}}> lead </span>
-                  <span style={{fontSize:20,fontWeight:800,color:SC(ls)==="#1a1a2e"?"#1a1a2e":SC(ls)}}>{ls}</span>
-                </div>
-              ) : null}
+              {/* v0821.36-dev: lead / trick-winner badges removed — they covered the played cards (A 2026-09-13) */}
               {[0,1,2,3].map(pi=>{
                 const played=S.trick.find(x=>x.playerIdx===pi);
                 const myTurn=pi===S.curIdx&&S.phase==="playing";
