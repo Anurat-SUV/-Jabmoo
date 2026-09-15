@@ -60,7 +60,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.49-dev";
+  var VER="v0821.50-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2657,7 +2657,7 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
           <img src={GO_TROPHY} style={{position:"absolute",left:"50%",top:0,width:132,transform:"translateX(-50%)",filter:"drop-shadow(0 0 18px rgba(255,215,0,0.45)) drop-shadow(0 6px 10px rgba(0,0,0,0.6))"}}/>
           <div style={{position:"absolute",left:"50%",top:118,width:"104%",transform:"translateX(-50%)"}}>
             <img src={GO_RIBBON} style={{display:"block",width:"100%",filter:"drop-shadow(0 4px 8px rgba(0,0,0,0.6))"}}/>
-            <div style={{position:"absolute",left:0,right:0,top:"22%",textAlign:"center",fontFamily:"Georgia,serif",fontWeight:900,fontSize:26,letterSpacing:1,color:GOLD2,textShadow:"0 2px 0 #7a4a00,0 0 10px rgba(255,215,0,0.5)"}}>{L?"จบเกม!":"GAME OVER!"}</div>
+            <div style={{position:"absolute",left:0,right:0,top:"22%",transform:"translateY(-92%)",textAlign:"center",fontFamily:"Georgia,serif",fontWeight:900,fontSize:26,letterSpacing:1,color:GOLD2,textShadow:"0 2px 0 #7a4a00,0 0 10px rgba(255,215,0,0.5)"}}>{L?"จบเกม!":"GAME OVER!"}</div>
           </div>
         </div>
         <div style={{textAlign:"center",marginTop:2}}>
@@ -3331,6 +3331,15 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // v0821.42-dev: measure top/bottom seat blocks (name+chip+avatar+scored cards) so trick cards
   // clear them even when the scored-card box wraps to 2 rows — refs are null in landscape (skip)
   const [seatH,setSeatH]=useState({t:0,b:0});
+  // v0821.50: on the final game, show the per-seat round summary for 5s before the GameOver page
+  const [goHold,setGoHold]=useState(false);
+  const goNow=!!(sRef.current&&sRef.current.gameOver&&sRef.current.lastRoundScores);
+  useEffect(()=>{
+    if(!goNow){setGoHold(false);return;}
+    setGoHold(true);
+    const t=setTimeout(()=>setGoHold(false),5000);
+    return()=>clearTimeout(t);
+  },[goNow]);
   const topSeatRef=useRef(null), botSeatRef=useRef(null);
   useEffect(()=>{
     const t=topSeatRef.current?topSeatRef.current.offsetHeight:0, b=botSeatRef.current?botSeatRef.current.offsetHeight:0;
@@ -3447,7 +3456,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   if(!Sreal||!Sreal.hands)return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#1e3a5f"}}>{isClient?(lang==="th"?"รอโฮสต์เริ่ม…":"Waiting for host…"):"Loading…"}</div>;
   const S=mySeat===0?Sreal:permuteState(Sreal,mySeat);
   const pl=mySeat===0?cfg.players:[0,1,2,3].map(p=>cfg.players[(mySeat+p)%4]);
-  if(S.gameOver){
+  if(S.gameOver&&!(goHold&&S.lastRoundScores&&orient!=="landscape")){
     if(S.lastRoundScores&&lastRecordedGame.current!==S.gameNum){
       lastRecordedGame.current=S.gameNum;
       histRef.current=[...histRef.current,{game:S.gameNum,scores:S.lastRoundScores}];
@@ -4013,16 +4022,24 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               </div>
             )}
 
-          {S.phase==="roundSummary" && S.roundScores && (()=>{
+          {((S.phase==="roundSummary" && S.roundScores)||(S.gameOver&&goHold&&S.lastRoundScores)) && (()=>{
             /* v0821.49: round-summary boxes at each seat's spot (same anchors as the trick cards), green-gold theme */
-            const best=Math.max.apply(null,S.roundScores);
+            const RS=S.roundScores||S.lastRoundScores;
+            const best=Math.max.apply(null,RS);
+            // v0821.50: center each box on its trick card (top/bottom were edge-aligned before)
+            const SPc=[
+              {bottom:botOff+Math.round(tH2/2),left:"50%",transform:"translate(-50%,50%)"},
+              SP2[1],
+              {top:topOff+Math.round(tH2/2),left:"50%",transform:"translate(-50%,-50%)"},
+              SP2[3],
+            ];
             return (
               <div style={{position:"absolute",inset:0,zIndex:50,background:"rgba(0,0,0,0.45)"}}>
                 {[0,1,2,3].map(pi=>{
-                  const sc=S.roundScores[pi], tot=S.totals[pi], top=sc===best;
+                  const sc=RS[pi], tot=S.totals[pi], top=sc===best;
                   const c=sc>0?"#34d399":sc<0?"#f87171":"#cbd5c5";
                   return (
-                    <div key={pi} style={{position:"absolute",...SP2[pi],minWidth:Math.max(92,tW2*1.7),padding:"7px 10px",borderRadius:14,textAlign:"center",
+                    <div key={pi} style={{position:"absolute",...SPc[pi],minWidth:Math.max(92,tW2*1.7),padding:"7px 10px",borderRadius:14,textAlign:"center",
                       background:"linear-gradient(180deg,#0f4a34 0%,#0b3d2e 70%,#08301f 100%)",border:"2px solid "+(top?"#fde68a":"#d4af37"),
                       boxShadow:top?"0 0 0 2px rgba(253,230,138,0.25), 0 6px 22px rgba(0,0,0,0.55)":"0 6px 22px rgba(0,0,0,0.55)"}}>
                       {top&&<div style={{position:"absolute",top:-13,left:"50%",transform:"translateX(-50%)",fontSize:15,lineHeight:1}}>👑</div>}
