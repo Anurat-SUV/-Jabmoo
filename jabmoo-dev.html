@@ -60,7 +60,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.50-dev";
+  var VER="v0821.52-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2639,8 +2639,9 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
   const circBtn={width:44,height:44,borderRadius:22,border:"2px solid "+GOLD,background:"rgba(11,61,46,0.85)",color:GOLD2,fontSize:18,cursor:"pointer",display:"grid",placeItems:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.5)"};
   const outlineBtn={width:"100%",padding:"12px 10px",background:"rgba(11,61,46,0.9)",border:"2px solid "+GOLD,borderRadius:12,fontSize:14,fontWeight:800,color:GOLD2,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.4)"};
   const me=s.find(p=>p.seat===0);
+  // v0821.52: clamp to the real viewport (--vh) and clip x-overflow (ribbon is 104% wide) so iOS cannot pan the whole page
   return (
-    <div style={{minHeight:"100vh",height:"100dvh",background:"#0b3d2e",overflowY:"auto",position:"relative"}}>
+    <div style={{height:"var(--vh,100dvh)",width:"100%",background:"#0b3d2e",overflowY:"auto",overflowX:"hidden",position:"fixed",top:0,left:0,overscrollBehavior:"contain",WebkitOverflowScrolling:"touch"}}>
       {confetti.map((c,i)=><span key={i} className="confetti" style={{left:c.l+"%",animationDuration:c.d+"s",animationDelay:c.dl+"s"}}>{c.e}</span>)}
       <div style={{width:"100%",maxWidth:460,margin:"0 auto",position:"relative",minHeight:"100%",
         backgroundImage:"url("+GO_BG+")",backgroundSize:"100% auto",backgroundRepeat:"no-repeat",backgroundPosition:"top center",
@@ -2657,7 +2658,7 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
           <img src={GO_TROPHY} style={{position:"absolute",left:"50%",top:0,width:132,transform:"translateX(-50%)",filter:"drop-shadow(0 0 18px rgba(255,215,0,0.45)) drop-shadow(0 6px 10px rgba(0,0,0,0.6))"}}/>
           <div style={{position:"absolute",left:"50%",top:118,width:"104%",transform:"translateX(-50%)"}}>
             <img src={GO_RIBBON} style={{display:"block",width:"100%",filter:"drop-shadow(0 4px 8px rgba(0,0,0,0.6))"}}/>
-            <div style={{position:"absolute",left:0,right:0,top:"22%",transform:"translateY(-92%)",textAlign:"center",fontFamily:"Georgia,serif",fontWeight:900,fontSize:26,letterSpacing:1,color:GOLD2,textShadow:"0 2px 0 #7a4a00,0 0 10px rgba(255,215,0,0.5)"}}>{L?"จบเกม!":"GAME OVER!"}</div>
+            <div style={{position:"absolute",left:0,right:0,top:"22%",transform:"translateY(-42%)",textAlign:"center",fontFamily:"Georgia,serif",fontWeight:900,fontSize:26,letterSpacing:1,color:GOLD2,textShadow:"0 2px 0 #7a4a00,0 0 10px rgba(255,215,0,0.5)"}}>{L?"จบเกม!":"GAME OVER!"}</div>
           </div>
         </div>
         <div style={{textAlign:"center",marginTop:2}}>
