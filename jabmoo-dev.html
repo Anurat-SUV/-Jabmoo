@@ -60,7 +60,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.52-dev";
+  var VER="v0821.53-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -115,7 +115,8 @@ input::placeholder{color:#9ca3af;opacity:1;}
     // max(env(safe-area-inset-top),var(--sat,0px))=0 and innerHeight=screen−statusbar → pad the top ourselves
     var gap=(screen.height||0)-window.innerHeight, env=0;
     if(document.body){var d=document.createElement("div");d.style.cssText="position:fixed;top:0;height:env(safe-area-inset-top);";document.body.appendChild(d);env=d.offsetHeight;d.remove();}
-    if(navigator.standalone===true&&window.innerWidth<window.innerHeight&&env===0&&gap>=40&&gap<=100)r.style.setProperty("--sat",gap+"px");
+    var sa=navigator.standalone===true||(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches); // v0821.53: iOS 26 web-app mode may not set navigator.standalone
+    if(sa&&window.innerWidth<window.innerHeight&&env===0&&gap>=40&&gap<=100)r.style.setProperty("--sat",gap+"px");
     else r.style.removeProperty("--sat");
   }catch(e){}}
   setVH(); document.addEventListener("DOMContentLoaded",setVH); window.addEventListener("resize",setVH);
@@ -2399,7 +2400,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
     });
   }
   return (
-    <div className="vh100" style={{background:LANDING_V2?"#160c04":"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"0.6rem",overflowY:"auto"}}>
+    <div className="vh100" style={{background:LANDING_V2?"#160c04":"#f0f1f3",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"0.6rem",paddingTop:"calc(0.6rem + max(env(safe-area-inset-top),var(--sat,0px)))",overflowY:"auto"}}>
       <div style={{width:"100%",maxWidth:440,background:LANDING_V2?"linear-gradient(180deg,#5c3a1e,#3e2413)":"#fff",borderRadius:16,padding:"0.9rem",border:LANDING_V2?"2px solid #b4831a":"1px solid #e5e7eb",boxShadow:"0 4px 24px rgba(0,0,0,0.35)",marginTop:"0.2rem",marginBottom:"0.2rem"}}>
         {LANDING_V2?(
           <div style={{margin:"-0.9rem -0.9rem 0.8rem",padding:"0 0.8rem 0.2rem",borderRadius:"16px 16px 0 0",position:"relative",overflow:"hidden"}}>
@@ -2720,8 +2721,11 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
           </div>
         )}
         {/* primary buttons */}
-        <button onClick={onAgain} style={{marginTop:12,width:"100%",padding:14,background:"linear-gradient(180deg,#ffe9a8,#d4af37 55%,#b8860b)",border:"2px solid #8a5a00",borderRadius:12,fontSize:17,fontWeight:900,color:"#2a1a00",cursor:"pointer",boxShadow:"0 3px 0 #6b4400,0 6px 14px rgba(0,0,0,0.45)"}}>▶ {L?"เล่นอีกรอบ":"Play Again"}</button>
-        {onHome&&<button onClick={onHome} style={{...outlineBtn,marginTop:8,fontSize:15}}>🏠 {L?"กลับหน้าแรก / ดูอันดับ":"Back to Home"}</button>}
+        {/* v0821.53: play-again (left) + home (right) on one row so the coin summary + "Good Game!" fit without scrolling */}
+        <div style={{marginTop:12,display:"flex",gap:8}}>
+          <button onClick={onAgain} style={{flex:1,padding:"13px 6px",background:"linear-gradient(180deg,#ffe9a8,#d4af37 55%,#b8860b)",border:"2px solid #8a5a00",borderRadius:12,fontSize:16,fontWeight:900,color:"#2a1a00",cursor:"pointer",boxShadow:"0 3px 0 #6b4400,0 6px 14px rgba(0,0,0,0.45)",whiteSpace:"nowrap"}}>▶ {L?"เล่นอีกรอบ":"Play Again"}</button>
+          {onHome&&<button onClick={onHome} style={{...outlineBtn,flex:1,width:"auto",padding:"13px 6px",fontSize:14,lineHeight:1.15}}>🏠 {L?"หน้าแรก / อันดับ":"Home / Ranks"}</button>}
+        </div>
         {/* my coin summary */}
         {cc&&me&&(
           <div style={{marginTop:14,display:"flex",alignItems:"center",gap:8,background:"rgba(6,38,28,0.9)",border:"2px solid "+GOLD,borderRadius:12,padding:"10px 12px"}}>
