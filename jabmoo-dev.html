@@ -17,6 +17,7 @@
 <script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <meta name="theme-color" content="#0b1f12">
+<meta name="color-scheme" content="dark">
 <link rel="manifest" href="manifest-dev.json">
 <link rel="apple-touch-icon" sizes="180x180" href="icon-dev-180.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icon-dev-192.png">
@@ -26,7 +27,7 @@
 <meta name="apple-mobile-web-app-title" content="จับหมู DEV">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html{background:#060f09;height:100%;overflow:hidden;}
+html{background:#060f09;height:100%;overflow:hidden;color-scheme:dark;-webkit-text-size-adjust:100%;}
 body{height:var(--vh,100dvh);}
 body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(ellipse at 50% 30%,#14361f 0%,#0b1f12 60%,#060f09 100%);overflow:hidden;height:100vh;height:100dvh;min-height:-webkit-fill-available;width:100vw;}
 @keyframes confettiFall{0%{transform:translateY(-10vh) rotate(0);opacity:1;}100%{transform:translateY(110vh) rotate(720deg);opacity:0.6;}}
@@ -60,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.53-dev";
+  var VER="v0821.54-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2062,14 +2063,14 @@ function PigSVG({w,h}){
   );
 }
 
-function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
+function CF({card,sel,onClick,dis,w,h,lead,trick,corner,centerToo}){
   w=w||52; h=h||74; lead=lead||false;
   const qS=card.suit==="♠"&&card.rank==="Q";
   const isJD=card.suit==="♦"&&card.rank==="J";
   const isTC=card.suit==="♣"&&card.rank==="10";
   const rankFs=Math.round(h*0.24);
   const suitFs=Math.round(h*0.38);
-  const cIdx=Math.round(h*0.20); // corner index (≈80% of center rank)
+  const cIdx=Math.round(h*0.24); // corner index (v0821.54: same size as the center rank)
   const border=sel?"3px solid #3b82f6":lead?"3px double #d4a017":"1.5px solid #d1d5db";
   const shadow=sel?"0 5px 16px rgba(59,130,246,0.4)":lead?"0 0 8px rgba(212,160,23,0.5)":"0 2px 5px rgba(0,0,0,0.15)";
   return (
@@ -2083,7 +2084,7 @@ function CF({card,sel,onClick,dis,w,h,lead,trick,corner}){
         ? <img src={IMG_QS} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="Q♠"/>
         : isJD
           ? <img src={IMG_JD} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="J♦"/>
-          : !corner && (<React.Fragment>
+          : (!corner||centerToo) && (<React.Fragment>
               <div style={{fontSize:rankFs,fontWeight:800,color:SC(card.suit),lineHeight:1}}>{card.rank}</div>
               <div style={{fontSize:trick?Math.round(h*0.50):suitFs,color:SC(card.suit),lineHeight:1}}>{card.suit}</div>
             </React.Fragment>)
@@ -2863,6 +2864,8 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail,corner}
   let scroll=false;
   if(ov>maxOv){ov=maxOv;scroll=true;} // even max overlap won't fit → allow horizontal scroll
   const justify=(needOverlap||scroll)?"flex-start":"center";
+  // v0821.54: when cards overlap, the visible strip is the left edge → draw the rank/suit index there too
+  const autoCorner=!corner&&ov>W*0.3; // heavy overlap only; light overlap keeps the centered rank
   const selectedCard=selected!==null&&selected!==undefined?hands0[selected]:null;
   return (
     <div className={scroll?"hand-scroll":""} style={{display:"flex",width:"100%",justifyContent:justify,paddingBottom:2,paddingTop:14,boxSizing:"border-box",overflowX:scroll?"auto":"visible"}}>
@@ -2874,7 +2877,7 @@ function HandCards({hands0,ls,trick,curIdx,phase,selected,ap,cw,ch,avail,corner}
         const isSel=selectedCard&&selectedCard.key===card.key&&selected===oi;
         return (
           <div key={card.key} style={{marginLeft:idx>0?-ov:0,zIndex:isSel?20:idx,flexShrink:0}}>
-            <CF card={card} sel={isSel} onClick={()=>{if(myTurn)ap({type:"SEL",val:isSel?null:oi});}} dis={!myTurn||!ok} w={W} h={H} corner={corner}/>
+            <CF card={card} sel={isSel} onClick={()=>{if(myTurn)ap({type:"SEL",val:isSel?null:oi});}} dis={!myTurn||!ok} w={W} h={H} corner={corner||autoCorner}/>
           </div>
         );
       })}
