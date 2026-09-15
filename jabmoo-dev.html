@@ -27,6 +27,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html{background:#060f09;height:100%;overflow:hidden;}
+body{height:var(--appH,100dvh);}
 body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(ellipse at 50% 30%,#14361f 0%,#0b1f12 60%,#060f09 100%);overflow:hidden;height:100vh;height:100dvh;min-height:-webkit-fill-available;width:100vw;}
 @keyframes confettiFall{0%{transform:translateY(-10vh) rotate(0);opacity:1;}100%{transform:translateY(110vh) rotate(720deg);opacity:0.6;}}
 @keyframes goldPulse{0%,100%{box-shadow:0 0 6px 1px rgba(212,175,55,0.55);}50%{box-shadow:0 0 14px 4px rgba(212,175,55,0.95);}}
@@ -41,8 +42,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(e
 .fwShot{position:fixed;bottom:0;width:5px;height:14px;border-radius:3px;pointer-events:none;animation:fwShot 0.75s ease-out forwards;z-index:400;}
 .fwSpark{position:fixed;width:7px;height:7px;border-radius:50%;pointer-events:none;animation:fwSpark 1.25s ease-out forwards;z-index:401;}
 .fwFlash{position:fixed;inset:0;background:radial-gradient(circle at 50% 38%,rgba(255,240,180,0.9),transparent 60%);pointer-events:none;animation:fwFlash 0.6s ease-out forwards;z-index:399;}
-/* v0821.43: fixed-inset root — iOS standalone left a dead strip under the play button with 100dvh */
-.vh100{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:auto;min-height:0;padding-top:env(safe-area-inset-top);box-sizing:border-box;}
+/* v0821.44: iOS standalone (black-translucent) reports innerHeight = screen − status bar while the
+   web view covers the whole screen → --appH is set from JS to screen.height so the root reaches the bottom */
+.vh100{height:100vh;height:100dvh;height:var(--appH,100dvh);padding-top:calc(env(safe-area-inset-top) + 6px);box-sizing:border-box;}
 input,select,button{font-family:inherit;}
 select{appearance:auto;}
 .hand-scroll{display:flex;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
@@ -57,7 +59,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.43-dev";
+  var VER="v0821.44-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -101,6 +103,16 @@ input::placeholder{color:#9ca3af;opacity:1;}
     x.onclick=function(){d.remove();};
     d.appendChild(s);d.appendChild(b);d.appendChild(x);document.body.appendChild(d);
   }
+  // v0821.44: iOS home-screen app — portrait viewport is short by the status-bar height
+  function fixAppH(){
+    try{
+      var r=document.documentElement, sh=screen.height, ih=window.innerHeight, iw=window.innerWidth;
+      var gap=sh-ih;
+      if(navigator.standalone===true&&iw<ih&&gap>0&&gap<100)r.style.setProperty("--appH",sh+"px");
+      else r.style.removeProperty("--appH");
+    }catch(e){}
+  }
+  fixAppH(); window.addEventListener("resize",fixAppH); window.addEventListener("orientationchange",function(){setTimeout(fixAppH,300);});
   function checkUpdate(){
     if(window.__JM_DEV)return; // dev copy: no update prompts
     var now=Date.now();
@@ -119,7 +131,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
   }
   if(window.__JM_DEV){
     var b=document.createElement("div");
-    b.textContent="🛠 DEV "+window.innerWidth+"×"+window.innerHeight+"/"+(screen.height||"?");
+    b.textContent="🛠 DEV "+window.innerWidth+"×"+window.innerHeight+"/"+(screen.height||"?")+(navigator.standalone===true?" pwa":"")+(getComputedStyle(document.documentElement).getPropertyValue("--appH")?" fix":"");
     b.style.cssText="position:fixed;top:calc(4px + env(safe-area-inset-top));left:4px;z-index:99999;background:#dc2626;color:#fff;font:800 10px sans-serif;padding:2px 7px;border-radius:6px;letter-spacing:1px;pointer-events:none;opacity:0.9";
     if(document.body)document.body.appendChild(b);
     else window.addEventListener("load",function(){document.body.appendChild(b);});
