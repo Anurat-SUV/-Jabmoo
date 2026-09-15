@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.54-dev";
+  var VER="v0821.55-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2063,36 +2063,61 @@ function PigSVG({w,h}){
   );
 }
 
+// v0821.55-dev: real-card face — corner indices (top-left + rotated bottom-right) and a standard
+// pip layout for 2-10 (2 columns × 2/3/4 rows + center/mid pips), big pip for A, big letter for J/Q/K.
+const PIP_LAYOUT={
+  "2":[[1,0],[1,1]],
+  "3":[[1,0],[1,.5],[1,1]],
+  "4":[[0,0],[2,0],[0,1],[2,1]],
+  "5":[[0,0],[2,0],[0,1],[2,1],[1,.5]],
+  "6":[[0,0],[2,0],[0,.5],[2,.5],[0,1],[2,1]],
+  "7":[[0,0],[2,0],[0,.5],[2,.5],[0,1],[2,1],[1,.25]],
+  "8":[[0,0],[2,0],[0,.5],[2,.5],[0,1],[2,1],[1,.25],[1,.75]],
+  "9":[[0,0],[2,0],[0,1/3],[2,1/3],[0,2/3],[2,2/3],[0,1],[2,1],[1,.5]],
+  "10":[[0,0],[2,0],[0,1/3],[2,1/3],[0,2/3],[2,2/3],[0,1],[2,1],[1,1/6],[1,5/6]],
+};
 function CF({card,sel,onClick,dis,w,h,lead,trick,corner,centerToo}){
   w=w||52; h=h||74; lead=lead||false;
   const qS=card.suit==="♠"&&card.rank==="Q";
   const isJD=card.suit==="♦"&&card.rank==="J";
   const isTC=card.suit==="♣"&&card.rank==="10";
-  const rankFs=Math.round(h*0.24);
-  const suitFs=Math.round(h*0.38);
-  const cIdx=Math.round(h*0.24); // corner index (v0821.54: same size as the center rank)
+  const col=SC(card.suit);
+  const cIdx=Math.round(h*0.2);          // corner index
+  const pipFs=Math.round(h*0.155);        // number-card pips
   const border=sel?"3px solid #3b82f6":lead?"3px double #d4a017":"1.5px solid #d1d5db";
   const shadow=sel?"0 5px 16px rgba(59,130,246,0.4)":lead?"0 0 8px rgba(212,160,23,0.5)":"0 2px 5px rgba(0,0,0,0.15)";
+  const pips=PIP_LAYOUT[card.rank];
+  const Idx=({flip})=>(
+    <div style={{position:"absolute",...(flip?{bottom:2,right:3,transform:"rotate(180deg)"}:{top:2,left:3}),display:"flex",flexDirection:"column",alignItems:"center",lineHeight:0.92,zIndex:6,background:(qS||isJD)?"rgba(255,255,255,0.9)":"transparent",borderRadius:3,padding:(qS||isJD)?"1px 2px":0}}>
+      <span style={{fontSize:cIdx,fontWeight:800,color:col,letterSpacing:card.rank==="10"?-1:0}}>{card.rank}</span>
+      <span style={{fontSize:Math.round(cIdx*0.9),color:col}}>{card.suit}</span>
+    </div>
+  );
   return (
     <div onClick={dis?undefined:onClick} style={{
       position:"relative",width:w,height:h,background:"#fff",borderRadius:7,border:border,
       cursor:dis?"default":"pointer",transform:sel?"translateY(-14px)":"none",transition:"transform 0.15s",
-      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
       flexShrink:0,boxShadow:shadow,zIndex:sel?10:1,opacity:dis?0.92:1,overflow:"hidden"
     }}>
       {qS
-        ? <img src={IMG_QS} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="Q♠"/>
+        ? <img src={IMG_QS} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6,display:"block"}} alt="Q♠"/>
         : isJD
-          ? <img src={IMG_JD} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}} alt="J♦"/>
-          : (!corner||centerToo) && (<React.Fragment>
-              <div style={{fontSize:rankFs,fontWeight:800,color:SC(card.suit),lineHeight:1}}>{card.rank}</div>
-              <div style={{fontSize:trick?Math.round(h*0.50):suitFs,color:SC(card.suit),lineHeight:1}}>{card.suit}</div>
-            </React.Fragment>)
+          ? <img src={IMG_JD} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6,display:"block"}} alt="J♦"/>
+          : pips
+            ? <div style={{position:"absolute",left:"30%",right:"30%",top:"17%",bottom:"17%"}}>
+                {pips.map(([c,f],i)=>(
+                  <span key={i} style={{position:"absolute",left:c*50+"%",top:(f*100)+"%",transform:"translate(-50%,-50%)"+(f>0.5?" rotate(180deg)":""),fontSize:pipFs,color:col,lineHeight:1}}>{card.suit}</span>
+                ))}
+              </div>
+            : card.rank==="A"
+              ? <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(h*0.42),color:col,lineHeight:1}}>{card.suit}</div>
+              : <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:col,lineHeight:1}}>
+                  <div style={{fontSize:Math.round(h*0.32),fontWeight:800,fontFamily:"Georgia,serif"}}>{card.rank}</div>
+                  <div style={{fontSize:Math.round(h*0.2)}}>{card.suit}</div>
+                </div>
       }
-      {corner && <div style={{position:"absolute",top:2,left:3,display:"flex",flexDirection:"column",alignItems:"center",lineHeight:0.9,zIndex:6,background:(qS||isJD)?"rgba(255,255,255,0.9)":"transparent",borderRadius:3,padding:(qS||isJD)?"1px 2px":0}}>
-        <span style={{fontSize:cIdx,fontWeight:800,color:SC(card.suit)}}>{card.rank}</span>
-        <span style={{fontSize:cIdx,color:SC(card.suit)}}>{card.suit}</span>
-      </div>}
+      <Idx/>
+      {!(qS||isJD)&&<Idx flip/>}
       {isTC && <div style={{position:"absolute",top:-8,right:-5,background:"#fbbf24",color:"#78350f",fontSize:9,fontWeight:800,borderRadius:4,padding:"1px 4px",zIndex:11}}>×2</div>}
     </div>
   );
