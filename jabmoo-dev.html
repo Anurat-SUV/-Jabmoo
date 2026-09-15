@@ -60,7 +60,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.46-dev";
+  var VER="v0821.49-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -106,7 +106,11 @@ input::placeholder{color:#9ca3af;opacity:1;}
   }
   // v0821.45: --vh = real viewport height (iOS PWA reports it correctly; 100vh/screen.height do not)
   function setVH(){try{
-    var r=document.documentElement; r.style.setProperty("--vh",window.innerHeight+"px");
+    var r=document.documentElement;
+    // v0821.47: iOS sometimes reports a stale (shorter) innerHeight right after launch — take the
+    // larger of innerHeight / visualViewport.height and re-check for the first few seconds
+    var vv=(window.visualViewport&&window.visualViewport.height)||0, h=Math.max(window.innerHeight,vv);
+    r.style.setProperty("--vh",h+"px");
     // v0821.46: iOS 26 home-screen app draws the page under the status bar yet reports
     // max(env(safe-area-inset-top),var(--sat,0px))=0 and innerHeight=screen−statusbar → pad the top ourselves
     var gap=(screen.height||0)-window.innerHeight, env=0;
@@ -114,7 +118,8 @@ input::placeholder{color:#9ca3af;opacity:1;}
     if(navigator.standalone===true&&window.innerWidth<window.innerHeight&&env===0&&gap>=40&&gap<=100)r.style.setProperty("--sat",gap+"px");
     else r.style.removeProperty("--sat");
   }catch(e){}}
-  setVH(); document.addEventListener("DOMContentLoaded",setVH); window.addEventListener("resize",setVH); if(window.visualViewport)window.visualViewport.addEventListener("resize",setVH);
+  setVH(); document.addEventListener("DOMContentLoaded",setVH); window.addEventListener("resize",setVH);
+  [100,400,1000,2500,5000].forEach(function(t){setTimeout(setVH,t);}); window.addEventListener("pageshow",setVH); document.addEventListener("visibilitychange",setVH); if(window.visualViewport)window.visualViewport.addEventListener("resize",setVH);
   window.addEventListener("orientationchange",function(){setTimeout(setVH,300);});
   function checkUpdate(){
     if(window.__JM_DEV)return; // dev copy: no update prompts
@@ -134,7 +139,12 @@ input::placeholder{color:#9ca3af;opacity:1;}
   }
   if(window.__JM_DEV){
     var b=document.createElement("div");
-    b.textContent="🛠 DEV "+window.innerWidth+"×"+window.innerHeight+"/"+(screen.height||"?")+(navigator.standalone===true?" pwa":"")+" sat="+(function(){var d=document.createElement("div");d.style.cssText="position:fixed;top:0;height:env(safe-area-inset-top);";document.body.appendChild(d);var h=d.offsetHeight;d.remove();return h;})();
+    var upd=function(){try{
+      var vv=window.visualViewport?Math.round(window.visualViewport.height):"-";
+      var sat=(function(){var d=document.createElement("div");d.style.cssText="position:fixed;top:0;height:env(safe-area-inset-top);";document.body.appendChild(d);var h=d.offsetHeight;d.remove();return h;})();
+      b.textContent="🛠 DEV ih="+window.innerHeight+" vv="+vv+" sc="+(screen.height||"?")+(navigator.standalone===true?" pwa":"")+" sat="+sat+" vh="+getComputedStyle(document.documentElement).getPropertyValue("--vh").trim();
+    }catch(e){}};
+    upd(); setInterval(upd,700);
     b.style.cssText="position:fixed;top:calc(4px + max(env(safe-area-inset-top),var(--sat,0px)));left:4px;z-index:99999;background:#dc2626;color:#fff;font:800 10px sans-serif;padding:2px 7px;border-radius:6px;letter-spacing:1px;pointer-events:none;opacity:0.9";
     if(document.body)document.body.appendChild(b);
     else window.addEventListener("load",function(){document.body.appendChild(b);});
@@ -174,7 +184,7 @@ document.addEventListener('click',unlockAudio,{once:true});
 const SEATCOL=["#3b82f6","#ef4444","#22c55e","#eab308"];
 const TURN_SECS=25;
 const SOLO_TIMER_OFF=true; // solo vs 3 bots: no countdown (A: may re-enable later — set to false)
-const EMOTES=["😂","😭","🐷","👍","🔥","😱","🤔","🎉"];
+const EMOTES=["😂","🤣","😭","😢","😠","😱","🐷","👍","🔥","🤔","🎉","👏"]; // v0821.48: +angry/cry/laugh variants
 function hap(p){try{if(navigator.vibrate)navigator.vibrate(p);}catch(e){}}
 function playCardTick(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=520;const t=ctx.currentTime;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.10,t+0.005);g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.1);}catch(e){}}
 function playTrickWin(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();[660,880].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const t=ctx.currentTime+i*0.08;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.13,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+0.18);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.2);});}catch(e){}}
@@ -4003,29 +4013,28 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               </div>
             )}
 
-          {S.phase==="roundSummary" && S.roundScores && (
-            <div style={{position:"absolute",inset:0,zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridTemplateRows:"1fr 1fr 1fr",gap:6,width:"90%",height:"85%",maxWidth:300,maxHeight:260}}>
-                {Array(9).fill(null).map((_,idx)=>{
-                  const row=Math.floor(idx/3), col=idx%3;
-                  let pi=-1;
-                  if(row===0&&col===1)pi=2;
-                  if(row===1&&col===0)pi=3;
-                  if(row===1&&col===2)pi=1;
-                  if(row===2&&col===1)pi=0;
-                  if(pi===-1)return <div key={idx}/>;
-                  const sc=S.roundScores[pi];
-                  const col2=sc>0?"#059669":sc<0?"#dc2626":"#6b7280";
-                  return(
-                    <div key={idx} style={{background:"rgba(255,255,255,0.95)",borderRadius:10,padding:"6px 4px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.25)"}}>
-                      <div style={{fontSize:11,fontWeight:700,color:"#374151",marginBottom:2,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",width:"100%"}}>{pl[pi].name}</div>
-                      <div style={{fontSize:26,fontWeight:900,color:col2,lineHeight:1}}>{sc>0?"+":""}{sc}</div>
+          {S.phase==="roundSummary" && S.roundScores && (()=>{
+            /* v0821.49: round-summary boxes at each seat's spot (same anchors as the trick cards), green-gold theme */
+            const best=Math.max.apply(null,S.roundScores);
+            return (
+              <div style={{position:"absolute",inset:0,zIndex:50,background:"rgba(0,0,0,0.45)"}}>
+                {[0,1,2,3].map(pi=>{
+                  const sc=S.roundScores[pi], tot=S.totals[pi], top=sc===best;
+                  const c=sc>0?"#34d399":sc<0?"#f87171":"#cbd5c5";
+                  return (
+                    <div key={pi} style={{position:"absolute",...SP2[pi],minWidth:Math.max(92,tW2*1.7),padding:"7px 10px",borderRadius:14,textAlign:"center",
+                      background:"linear-gradient(180deg,#0f4a34 0%,#0b3d2e 70%,#08301f 100%)",border:"2px solid "+(top?"#fde68a":"#d4af37"),
+                      boxShadow:top?"0 0 0 2px rgba(253,230,138,0.25), 0 6px 22px rgba(0,0,0,0.55)":"0 6px 22px rgba(0,0,0,0.55)"}}>
+                      {top&&<div style={{position:"absolute",top:-13,left:"50%",transform:"translateX(-50%)",fontSize:15,lineHeight:1}}>👑</div>}
+                      <div style={{fontSize:12,fontWeight:800,color:pi===0?"#fde68a":"#f3e9c8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:130}}>{pl[pi].name}{pi===0?" ★":""}</div>
+                      <div style={{fontSize:26,fontWeight:900,color:c,lineHeight:1.1,textShadow:"0 1px 2px rgba(0,0,0,0.6)"}}>{sc>0?"+":""}{sc}</div>
+                      <div style={{fontSize:10,color:"#8fb0a1",marginTop:2}}>{L?"รวม":"total"} <span style={{fontWeight:700,color:tot>0?"#34d399":tot<0?"#f87171":"#cbd5c5"}}>{tot>0?"+":""}{tot}</span></div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
+            );
+          })()}
           </div>
         );
       })()}
