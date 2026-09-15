@@ -45,7 +45,7 @@ body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(e
 /* v0821.45: root height = real innerHeight (--vh from JS; 100dvh fallback). Status bar is now opaque
    (apple-mobile-web-app-status-bar-style=black) so the web view starts below it and reaches the screen bottom;
    with black-translucent iOS left a dead strip at the bottom equal to the status-bar height. */
-.vh100{height:100vh;height:100dvh;height:var(--vh,100dvh);padding-top:env(safe-area-inset-top);box-sizing:border-box;}
+.vh100{height:100vh;height:100dvh;height:var(--vh,100dvh);padding-top:max(env(safe-area-inset-top),var(--sat,0px));box-sizing:border-box;}
 input,select,button{font-family:inherit;}
 select{appearance:auto;}
 .hand-scroll{display:flex;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
@@ -60,14 +60,14 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.45-dev";
+  var VER="v0821.46-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
     if(!d){
       d=document.createElement("div");d.id="jm-err";
-      d.style.cssText="position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:99999;background:#7f1d1d;color:#fff;padding:10px 12px;border-radius:10px;font:12px/1.5 monospace;max-height:45vh;overflow:auto;box-shadow:0 4px 16px rgba(0,0,0,.5)";
+      d.style.cssText="position:fixed;left:8px;right:8px;top:calc(8px + max(env(safe-area-inset-top),var(--sat,0px)));z-index:99999;background:#7f1d1d;color:#fff;padding:10px 12px;border-radius:10px;font:12px/1.5 monospace;max-height:45vh;overflow:auto;box-shadow:0 4px 16px rgba(0,0,0,.5)";
       var p=document.createElement("div");p.id="jm-err-msg";p.style.wordBreak="break-word";
       var b=document.createElement("button");b.textContent="\u27F3 \u0E40\u0E23\u0E34\u0E48\u0E21\u0E43\u0E2B\u0E21\u0E48";
       b.style.cssText="margin-top:8px;padding:8px 14px;border:none;border-radius:8px;background:#fff;color:#7f1d1d;font-weight:700";
@@ -91,7 +91,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
   function showUpdate(newVer){
     if(document.getElementById("jm-upd"))return;
     var d=document.createElement("div");d.id="jm-upd";
-    d.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:calc(46px + env(safe-area-inset-top));z-index:99998;background:#065f46;color:#fff;padding:8px 14px;border-radius:22px;font:13px/1.4 sans-serif;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;gap:10px";
+    d.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:calc(46px + max(env(safe-area-inset-top),var(--sat,0px)));z-index:99998;background:#065f46;color:#fff;padding:8px 14px;border-radius:22px;font:13px/1.4 sans-serif;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;gap:10px";
     var s=document.createElement("span");s.textContent="\u0E21\u0E35\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E0A\u0E31\u0E19\u0E43\u0E2B\u0E21\u0E48 "+newVer;
     var b=document.createElement("button");b.textContent="\u27F3 \u0E2D\u0E31\u0E1B\u0E40\u0E14\u0E15";
     b.style.cssText="padding:6px 12px;border:none;border-radius:16px;background:#fff;color:#065f46;font-weight:800;font-size:13px";
@@ -105,8 +105,16 @@ input::placeholder{color:#9ca3af;opacity:1;}
     d.appendChild(s);d.appendChild(b);d.appendChild(x);document.body.appendChild(d);
   }
   // v0821.45: --vh = real viewport height (iOS PWA reports it correctly; 100vh/screen.height do not)
-  function setVH(){try{document.documentElement.style.setProperty("--vh",window.innerHeight+"px");}catch(e){}}
-  setVH(); window.addEventListener("resize",setVH); if(window.visualViewport)window.visualViewport.addEventListener("resize",setVH);
+  function setVH(){try{
+    var r=document.documentElement; r.style.setProperty("--vh",window.innerHeight+"px");
+    // v0821.46: iOS 26 home-screen app draws the page under the status bar yet reports
+    // max(env(safe-area-inset-top),var(--sat,0px))=0 and innerHeight=screen−statusbar → pad the top ourselves
+    var gap=(screen.height||0)-window.innerHeight, env=0;
+    if(document.body){var d=document.createElement("div");d.style.cssText="position:fixed;top:0;height:env(safe-area-inset-top);";document.body.appendChild(d);env=d.offsetHeight;d.remove();}
+    if(navigator.standalone===true&&window.innerWidth<window.innerHeight&&env===0&&gap>=40&&gap<=100)r.style.setProperty("--sat",gap+"px");
+    else r.style.removeProperty("--sat");
+  }catch(e){}}
+  setVH(); document.addEventListener("DOMContentLoaded",setVH); window.addEventListener("resize",setVH); if(window.visualViewport)window.visualViewport.addEventListener("resize",setVH);
   window.addEventListener("orientationchange",function(){setTimeout(setVH,300);});
   function checkUpdate(){
     if(window.__JM_DEV)return; // dev copy: no update prompts
@@ -127,7 +135,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
   if(window.__JM_DEV){
     var b=document.createElement("div");
     b.textContent="🛠 DEV "+window.innerWidth+"×"+window.innerHeight+"/"+(screen.height||"?")+(navigator.standalone===true?" pwa":"")+" sat="+(function(){var d=document.createElement("div");d.style.cssText="position:fixed;top:0;height:env(safe-area-inset-top);";document.body.appendChild(d);var h=d.offsetHeight;d.remove();return h;})();
-    b.style.cssText="position:fixed;top:calc(4px + env(safe-area-inset-top));left:4px;z-index:99999;background:#dc2626;color:#fff;font:800 10px sans-serif;padding:2px 7px;border-radius:6px;letter-spacing:1px;pointer-events:none;opacity:0.9";
+    b.style.cssText="position:fixed;top:calc(4px + max(env(safe-area-inset-top),var(--sat,0px)));left:4px;z-index:99999;background:#dc2626;color:#fff;font:800 10px sans-serif;padding:2px 7px;border-radius:6px;letter-spacing:1px;pointer-events:none;opacity:0.9";
     if(document.body)document.body.appendChild(b);
     else window.addEventListener("load",function(){document.body.appendChild(b);});
   }
@@ -2626,7 +2634,7 @@ function GameOver({players,totals,lang,history,onAgain,onHome,showCoin,coinMult,
       {confetti.map((c,i)=><span key={i} className="confetti" style={{left:c.l+"%",animationDuration:c.d+"s",animationDelay:c.dl+"s"}}>{c.e}</span>)}
       <div style={{width:"100%",maxWidth:460,margin:"0 auto",position:"relative",minHeight:"100%",
         backgroundImage:"url("+GO_BG+")",backgroundSize:"100% auto",backgroundRepeat:"no-repeat",backgroundPosition:"top center",
-        padding:"calc(8px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom))",boxSizing:"border-box"}}>
+        padding:"calc(8px + max(env(safe-area-inset-top),var(--sat,0px))) 12px calc(16px + env(safe-area-inset-bottom))",boxSizing:"border-box"}}>
         {/* top bar: home / log */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",position:"relative",zIndex:3}}>
           {onHome?<div style={{textAlign:"center"}}><button onClick={onHome} style={circBtn}>🏠</button><div style={{fontSize:9,color:GOLD2,marginTop:2,fontWeight:700}}>{L?"หน้าแรก":"Home"}</div></div>:<div/>}
@@ -3561,7 +3569,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           })}
         </div>
         {!timerOff&&S.phase==="playing"&&S.curIdx===0&&turnLeft<=15&&(
-          <div style={{position:"fixed",top:"calc(8px + env(safe-area-inset-top))",left:"50%",transform:"translateX(-50%)",zIndex:260,background:turnLeft<=5?"#dc2626":"rgba(15,20,40,0.9)",color:"#fff",borderRadius:20,padding:"3px 13px",fontSize:13,fontWeight:800,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>⏱ {turnLeft}</div>
+          <div style={{position:"fixed",top:"calc(8px + max(env(safe-area-inset-top),var(--sat,0px)))",left:"50%",transform:"translateX(-50%)",zIndex:260,background:turnLeft<=5?"#dc2626":"rgba(15,20,40,0.9)",color:"#fff",borderRadius:20,padding:"3px 13px",fontSize:13,fontWeight:800,pointerEvents:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>⏱ {turnLeft}</div>
         )}
       </React.Fragment>
     );
@@ -5255,7 +5263,7 @@ function HallOfFame({prof,lang,onBack}){
   const L=lang==="th";
   const [rows,setRows]=useState(null);
   const [err,setErr]=useState(false);
-  const [tab,setTab]=useState("xp");
+  const [tab,setTab]=useState("skill"); // v0821.46: skill first
   useEffect(()=>{
     let live=true;
     profLeaderboard(100).then(r=>{if(live)setRows(r);}).catch(e=>{if(live)setErr((e&&e.message)||true);});
@@ -5281,9 +5289,30 @@ function HallOfFame({prof,lang,onBack}){
   const skillRows=skillAll.slice(0,20);
   const mySkillIdx=prof?skillAll.findIndex(r=>r.code===prof.code):-1;
   const star=c=>React.createElement("span",{style:{color:"#f4d47a"}},"★");
+  // v0821.46: one podium for every tab (XP / skill / coin)
+  const Podium=({list,main,sub})=>(
+    <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"10px 0 16px"}}>
+      {[1,0,2].map(slot=>{const p=list[slot];if(!p)return <div key={slot} style={{flex:1}}/>;const big=slot===0;
+        return (
+          <div key={slot} style={{flex:big?1.15:1,textAlign:"center",minWidth:0}}>
+            {big&&<div style={{fontSize:15,color:"#f4d47a"}}>👑</div>}
+            <div style={{width:big?58:46,height:big?58:46,margin:"0 auto 4px",borderRadius:"50%",background:"#12492f",border:"2.5px solid "+medal[slot],display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+              <PigAvatar id={p.pig_id||0} size={big?56:44}/>
+            </div>
+            <div style={{background:big?"#12492f":"#0f3a2b",border:"1.5px solid "+medal[slot],borderRadius:8,padding:"5px 2px"}}>
+              <div style={{fontSize:big?13:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
+              <div style={{fontSize:big?13:12,fontWeight:700,color:"#f4d47a",whiteSpace:"nowrap"}}>{main(p)}</div>
+              {sub&&<div style={{fontSize:8,color:"#7a9b8c",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub(p)}</div>}
+            </div>
+            <div style={{fontSize:10,color:medal[slot],marginTop:3}}>{L?"อันดับ ":"#"}{slot+1}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
   return (
     <div className="vh100" style={{background:"#08251b",overflowY:"auto",color:"#fff",fontFamily:"sans-serif"}}>
-      <div style={{maxWidth:440,margin:"0 auto",padding:"env(safe-area-inset-top) 12px 24px"}}>
+      <div style={{maxWidth:440,margin:"0 auto",padding:"max(env(safe-area-inset-top),var(--sat,0px)) 12px 24px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 2px 6px"}}>
           <button onClick={onBack} style={{width:34,height:34,borderRadius:17,border:"1.5px solid #d4af37",background:"transparent",color:"#d4af37",cursor:"pointer",fontSize:16}}>←</button>
           <div style={{textAlign:"center"}}>
@@ -5294,8 +5323,8 @@ function HallOfFame({prof,lang,onBack}){
         </div>
 
         <div style={{display:"flex",gap:6,margin:"4px 0 12px"}}>
-          <button onClick={()=>setTab("xp")} style={{flex:1,padding:"7px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:800,fontSize:12,background:tab==="xp"?"#d4af37":"rgba(255,255,255,0.08)",color:tab==="xp"?"#1a2e1a":"#a7f3d0"}}>⭐ {L?"สะสม":"XP"}</button>
           <button onClick={()=>setTab("skill")} style={{flex:1,padding:"7px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:800,fontSize:12,background:tab==="skill"?"#d4af37":"rgba(255,255,255,0.08)",color:tab==="skill"?"#1a2e1a":"#a7f3d0"}}>🎯 {L?"ฝีมือ":"Skill"}</button>
+          <button onClick={()=>setTab("xp")} style={{flex:1,padding:"7px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:800,fontSize:12,background:tab==="xp"?"#d4af37":"rgba(255,255,255,0.08)",color:tab==="xp"?"#1a2e1a":"#a7f3d0"}}>⭐ XP</button>
           {COIN_ON&&<button onClick={()=>setTab("coin")} style={{flex:1,padding:"7px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:800,fontSize:12,background:tab==="coin"?"#d4af37":"rgba(255,255,255,0.08)",color:tab==="coin"?"#1a2e1a":"#a7f3d0"}}>💰 {L?"เศรษฐี":"Rich"}</button>}
         </div>
 
@@ -5305,26 +5334,7 @@ function HallOfFame({prof,lang,onBack}){
           <span style={{display:"block",fontSize:10,color:"#7a9b8c",marginTop:4}}>{L?"ถ้าข้อความบอกว่า column ไม่มี → รัน SQL เพิ่มคอลัมน์ pig_id / wins / rank_sum":"If a column is missing, run the ALTER TABLE SQL"}</span>
         </div>}
 
-        {tab==="xp"&&rows&&rows.length>0&&(
-          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"10px 0 16px"}}>
-            {[1,0,2].map(slot=>{const p=podium[slot];if(!p)return <div key={slot} style={{flex:1}}/>;const big=slot===0;
-              return (
-                <div key={slot} style={{flex:big?1.15:1,textAlign:"center"}}>
-                  {big&&<div style={{fontSize:15,color:"#f4d47a"}}>👑</div>}
-                  <div style={{width:big?58:46,height:big?58:46,margin:"0 auto 4px",borderRadius:"50%",background:"#12492f",border:"2.5px solid "+medal[slot],display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-                    <PigAvatar id={p.pig_id||0} size={big?56:44}/>
-                  </div>
-                  <div style={{background:big?"#12492f":"#0f3a2b",border:"1.5px solid "+medal[slot],borderRadius:8,padding:"5px 2px"}}>
-                    <div style={{fontSize:big?13:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
-                    <div style={{fontSize:big?13:12,fontWeight:700,color:"#f4d47a"}}>★ {(p.xp||0).toLocaleString()}</div>
-                    <div style={{fontSize:8,color:"#7a9b8c",marginTop:1}}>♦️{pct(p.jd_won,p.jd_seen)}% ♠️{pct(p.qs_dodged,p.qs_seen)}% 🎯{p.slams||0} ⭐{p.superslams||0}</div>
-                  </div>
-                  <div style={{fontSize:10,color:medal[slot],marginTop:3}}>{L?"อันดับ ":"#"}{slot+1}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {tab==="xp"&&rows&&rows.length>0&&<Podium list={podium} main={p=>"★ "+(p.xp||0).toLocaleString()} sub={p=>"♦️"+pct(p.jd_won,p.jd_seen)+"% ♠️"+pct(p.qs_dodged,p.qs_seen)+"% 🎯"+(p.slams||0)+" ⭐"+(p.superslams||0)}/>}
 
         {tab==="xp"&&rows&&(
           <div style={{margin:"0 0 12px",background:"#0c3323",border:"1px solid #1c5a3f",borderRadius:12,padding:"10px 8px"}}>
@@ -5365,9 +5375,10 @@ function HallOfFame({prof,lang,onBack}){
           <React.Fragment>
             <div style={{textAlign:"center",fontSize:10,color:"#7a9b8c",marginBottom:8}}>{L?("จัดตามอันดับเฉลี่ย · ขั้นต่ำ "+SKILL_MIN+" เกมถึงติดตาราง"):("By average finish · min "+SKILL_MIN+" games")}</div>
             {skillRows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีใครถึงเกณฑ์":"Nobody qualifies yet"}</div>}
-            {skillRows.map((p,i)=>(
-              <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:i===0?"#12492f":"#0f3a2b",border:i===0?"1.5px solid #d4af37":"none",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
-                <span style={{fontSize:12,fontWeight:700,color:i===0?"#f4d47a":"#7a9b8c",width:18}}>{i+1}</span>
+            {skillRows.length>0&&<Podium list={skillRows.slice(0,3)} main={p=>p.avg.toFixed(2)} sub={p=>(L?"ชนะ ":"win ")+pct(p.wins,p.rk_games)+"% · "+p.rk_games+(L?" เกม":" g")}/>}
+            {skillRows.slice(3).map((p,i)=>(
+              <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:"#0f3a2b",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#7a9b8c",width:18}}>{i+4}</span>
                 <PigAvatar id={p.pig_id||0} size={26}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
@@ -5394,13 +5405,14 @@ function HallOfFame({prof,lang,onBack}){
 
         {tab==="coin"&&COIN_ON&&(
           <React.Fragment>
-            <div style={{textAlign:"center",fontSize:10,color:"#7a9b8c",marginBottom:8}}>{L?"จัดตามยอด coin · โพเดียมหลักดูที่แท็บ ⭐":"Ranked by coins · the podium lives in ⭐"}</div>
+            <div style={{textAlign:"center",fontSize:10,color:"#7a9b8c",marginBottom:8}}>{L?"จัดตามยอด coin":"Ranked by coins"}</div>
             {coinErr&&<div style={{textAlign:"center",padding:"1.5rem 12px",color:"#fca5a5",fontSize:11}}>⚠️ {coinErr}</div>}
             {!coinRows&&!coinErr&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"กำลังโหลด...":"Loading..."}</div>}
             {coinRows&&coinRows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีใครมี coin":"Nobody has coins yet"}</div>}
-            {coinRows&&coinRows.map((p,i)=>(
-              <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:i===0?"#12492f":"#0f3a2b",border:i===0?"1.5px solid #d4af37":"none",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
-                <span style={{fontSize:12,fontWeight:700,color:i===0?"#f4d47a":"#7a9b8c",width:18}}>{i+1}</span>
+            {coinRows&&coinRows.length>0&&<Podium list={coinRows.slice(0,3)} main={p=>"💰 "+(p.coins||0).toLocaleString()}/>}
+            {coinRows&&coinRows.slice(3).map((p,i)=>(
+              <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:"#0f3a2b",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#7a9b8c",width:18}}>{i+4}</span>
                 <PigAvatar id={p.pig_id||0} size={26}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
