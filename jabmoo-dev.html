@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.60-dev";
+  var VER="v0821.62-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -2070,7 +2070,7 @@ function CF({card,sel,onClick,dis,w,h,lead,trick,corner,centerToo}){
   const isTC=card.suit==="♣"&&card.rank==="10";
   const rankFs=Math.round(h*0.24);
   const suitFs=Math.round(h*0.38);
-  const cIdx=Math.round(h*0.24); // corner index (v0821.54: same size as the center rank)
+  const cIdx=Math.round(h*0.265); // corner index (v0821.61: +10%)
   const border=sel?"3px solid #3b82f6":lead?"3px double #d4a017":"1.5px solid #d1d5db";
   const shadow=sel?"0 5px 16px rgba(59,130,246,0.4)":lead?"0 0 8px rgba(212,160,23,0.5)":"0 2px 5px rgba(0,0,0,0.15)";
   return (
@@ -2128,14 +2128,14 @@ function CB({w,h,rot,bk}){
   );
 }
 
-function SCP({wc,vert,label}){
+function SCP({wc,vert,label,nowrap}){
   const RN={2:"2",3:"3",4:"4",5:"5",6:"6",7:"7",8:"8",9:"9",10:"10",11:"J",12:"Q",13:"K",14:"A"};
   const hearts=wc.filter(c=>c.suit==="♥").map(c=>RO[c.rank]).sort((a,b)=>a-b);
   const sps=wc.filter(c=>(c.suit==="♠"&&c.rank==="Q")||(c.suit==="♦"&&c.rank==="J")||(c.suit==="♣"&&c.rank==="10"));
   if(!hearts.length&&!sps.length)return null;
   const cw=vert?28:32, ch=vert?40:46;
   return (
-    <div style={{display:"flex",flexDirection:vert?"column":"row",flexWrap:"wrap",gap:3,alignItems:"center",justifyContent:"center",background:label?"rgba(4,30,20,0.72)":"rgba(212,160,23,0.15)",borderRadius:8,padding:label?"3px 6px 5px":"4px 6px",border:"2px solid #d4a017"}}>
+    <div style={{display:"flex",flexDirection:vert?"column":"row",flexWrap:nowrap?"nowrap":"wrap",gap:3,alignItems:"center",justifyContent:"center",flexShrink:0,background:label?"rgba(4,30,20,0.72)":"rgba(212,160,23,0.15)",borderRadius:8,padding:label?"3px 6px 5px":"4px 6px",border:"2px solid #d4a017"}}>
       {label&&<div style={{width:"100%",textAlign:"center",fontSize:9,fontWeight:800,color:"#fde68a",lineHeight:1.2,whiteSpace:"nowrap"}}>{label}</div>}
       {hearts.length>0 && (
         <div style={{display:"flex",flexWrap:"wrap",gap:2,alignItems:"center",background:"rgba(255,241,242,0.95)",borderRadius:5,padding:"2px 5px",border:"1.5px solid #dc2626"}}>
@@ -2894,6 +2894,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const [showHist,setShowHist]=useState(false);
   const [copyMsg,setCopyMsg]=useState(false);
   const [aiThinking,setAiThinking]=useState(false);
+  // v0821.62 FAST FINISH: once all 16 scoring cards (13♥ Q♠ J♦ 10♣) are captured, the rest of the game
+  // can't change anything → button lets the player auto-play their seat and speeds the bots up.
+  const [fastFinish,setFastFinish]=useState(false);
+  const fastRef=useRef(false); fastRef.current=fastFinish;
   const histRef=useRef((!net&&resume&&resume.hist)||[]);
   const gameLogRef=useRef((!net&&resume&&resume.gameLog)||[]); // full move log for export
   const [,fr]=useState(0);
@@ -3014,7 +3018,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       bk.current=k2;
       const lvl=cfg.players[S2.curIdx].isBot?cfg.players[S2.curIdx].botLevel:3; // subbed human → Lv3 MC
       const bc=botChar(cfg.players[S2.curIdx].isBot?cfg.players[S2.curIdx].botChar:"thep"); // takeover subs play at max
-      if(lvl===3&&bc.blur&&Math.random()<bc.blur){
+      if(fastRef.current){ // v0821.62: nothing left to fight for — plain heuristic, no MC, no pacing
+        const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
+        ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
+      } else if(lvl===3&&bc.blur&&Math.random()<bc.blur){
         // HEURISTIC BLUR: weak characters sometimes skip MC and play the plain heuristic —
         // cheap, natural-looking mistakes instead of hand-written dumb logic.
         const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
@@ -3055,8 +3062,17 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
         ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
       }
-    },mb.pace);
+    },fastRef.current?120:mb.pace);
     return()=>clearTimeout(tmr.current);
+  });
+  // v0821.62: fast finish — auto-play my own seat (lowest legal card) and reset when the game ends
+  useEffect(()=>{
+    if(!fastFinish)return;
+    const S=sRef.current; if(!S)return;
+    if(S.phase!=="playing"){ if(S.phase==="roundSummary"||S.gameOver)setFastFinish(false); return; }
+    if(S.curIdx!==mySeat||isBotSeat(mySeat))return;
+    const t=setTimeout(()=>{const S2=sRef.current;if(S2&&S2.phase==="playing"&&S2.curIdx===mySeat)autoPlayTimeout();},150);
+    return()=>clearTimeout(t);
   });
 
   // Use a ref to track which phase timer is currently scheduled
@@ -3110,7 +3126,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         scheduledPhase.current="";
         bk.current="";
         ap({type:"CLEAR",endMode:cfg.endMode,threshold:cfg.threshold,numGames:cfg.numGames});
-      },cfg.showSec*1000);
+      },fastRef.current?350:cfg.showSec*1000);
     } else if(phase==="roundSummary"){
       scheduledPhase.current="roundSummary";
       if(lastRecordedGame.current!==S.gameNum){
@@ -3919,7 +3935,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           const cur=i===S.curIdx&&S.phase==="playing";
           const tot=S.totals[i], cg=cgS[i];
           return (
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:0,maxWidth:"100%"}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:72,maxWidth:"100%"}}>
               <span style={{fontSize:13,fontWeight:800,color:cur?"#fde68a":"#f3e9c8",textShadow:"0 1px 3px rgba(0,0,0,0.8)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%",lineHeight:1.15}}>{pl[i].name}{i===0?" ★":""}</span>
               {/* v0821.37-dev: match total / this game — replaces the old strip above the table */}
               <span style={{display:"inline-flex",alignItems:"center",gap:3,background:"rgba(0,0,0,0.42)",border:"1px solid rgba(212,175,55,0.35)",borderRadius:8,padding:"0 5px",whiteSpace:"nowrap",lineHeight:1.35}}>
@@ -3945,7 +3961,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const blockH=Math.max(avaSz,Math.round(52*Math.min(k+0.15,1))), scBox=44;
         // reserve one scored-card row so the cards don't jump when the first scored card lands;
         // grow beyond that only if the measured seat block is taller (2-row box) — never overlap
-        const topOff=6+Math.max(blockH+scBox,seatH.t)+8, botOff=8+Math.max(blockH+scBox,seatH.b)+8;
+        const topOff=6+Math.max(blockH,seatH.t)+8, botOff=8+Math.max(blockH,seatH.b)+8; // v0821.61: scored cards sit in the seat row now
         const SP2=[
           {bottom:botOff,left:"50%",transform:"translateX(-50%)"},
           {right:sideW+6,top:"50%",transform:"translateY(-50%)"},
@@ -3958,13 +3974,14 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-52%)",fontSize:Math.round(160*Math.min(sf,1.6)),color:"rgba(0,0,0,0.24)",pointerEvents:"none",lineHeight:1,fontFamily:"Georgia,serif"}}>♠</div>
 
             {/* TOP seat — pl[2] */}
-            <div ref={topSeatRef} style={{position:"absolute",top:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"72%"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:"100%"}}>
+            <div ref={topSeatRef} style={{position:"absolute",top:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"96%"}}>
+              {/* v0821.61: scored cards on the same row → seat block height never changes */}
+              <div style={{display:"flex",alignItems:"center",gap:6,maxWidth:"100%"}}>
                 <SeatTag i={2}/>
                 <Ava i={2} size={avaSz}/>
                 <Stack i={2} vert={false}/>
+                <SCP wc={S.wonCards[2]} vert={false} nowrap/>
               </div>
-              <SCP wc={S.wonCards[2]} vert={false}/>
             </div>
 
             {/* LEFT seat — pl[3] */}
@@ -3984,12 +4001,12 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             </div>
 
             {/* BOTTOM seat — pl[0] (me) */}
-            <div ref={botSeatRef} style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"72%"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:"100%"}}>
+            <div ref={botSeatRef} style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"96%"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,maxWidth:"100%"}}>
                 <Ava i={0} size={avaSz}/>
                 <SeatTag i={0}/>
+                <SCP wc={S.wonCards[0]} vert={false} nowrap/>
               </div>
-              <SCP wc={S.wonCards[0]} vert={false}/>
             </div>
 
             {/* bot thinking badge */}
@@ -4022,6 +4039,17 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               })}
             </div>
 
+            {/* v0821.62: fast-finish button — all scoring cards captured, tricks remain */}
+            {(()=>{
+              if(S.phase!=="playing"||S.trickNum>=13)return null;
+              const seen=S.wonCards.reduce((n,w)=>n+w.filter(isSC).length,0)+S.trick.filter(t=>isSC(t.card)).length;
+              if(seen<16)return null;
+              return (
+                <button onClick={()=>setFastFinish(true)} disabled={fastFinish} style={{position:"absolute",top:6,left:6,zIndex:80,padding:"7px 11px",borderRadius:12,border:"1.5px solid #d4af37",background:fastFinish?"rgba(4,30,20,0.85)":"linear-gradient(180deg,#1a6b47,#0b3d2e)",color:"#fde68a",fontSize:12,fontWeight:800,cursor:fastFinish?"default":"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.5)",whiteSpace:"nowrap"}}>
+                  {fastFinish?(L?"⚡ กำลังจบ...":"⚡ finishing..."):(L?"⚡ ไพ่แต้มหมดแล้ว — จบเร็ว":"⚡ no points left — finish")}
+                </button>
+              );
+            })()}
             {/* emote FAB — bottom-right of the rail */}
             <button onClick={()=>setEmoteOpen(o=>!o)} style={{position:"absolute",bottom:8,right:8,zIndex:80,width:38,height:38,borderRadius:19,border:"2px solid rgba(212,175,55,0.7)",background:"rgba(37,99,235,0.92)",color:"#fff",fontSize:19,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.5)"}}>😊</button>
             {emoteOpen&&(
