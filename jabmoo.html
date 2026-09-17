@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.62";
+  var VER="v0821.63";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -3530,8 +3530,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(!lv&&!c)return null;
     return (
       <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(0,0,0,0.38)",border:"1px solid rgba(212,175,55,0.55)",borderRadius:9,padding:"1px 6px",whiteSpace:"nowrap"}}>
-        {lv&&<span style={{fontSize:8,fontWeight:800,color:"#93c5fd"}}>{lv}{subMark(i)}</span>}
-        {c&&<span style={{fontSize:9,fontWeight:800,color:"#ffd75e"}}>💰{c}</span>}
+        {lv&&<span style={{fontSize:10,fontWeight:800,color:"#93c5fd"}}>{lv}{subMark(i)}</span>}
+        {c&&<span style={{fontSize:11,fontWeight:800,color:"#ffd75e"}}>💰{c}</span>}
       </span>
     );
   };
@@ -3955,7 +3955,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const blockH=Math.max(avaSz,Math.round(52*Math.min(k+0.15,1))), scBox=44;
         // reserve one scored-card row so the cards don't jump when the first scored card lands;
         // grow beyond that only if the measured seat block is taller (2-row box) — never overlap
-        const topOff=6+Math.max(blockH,seatH.t)+8, botOff=8+Math.max(blockH,seatH.b)+8; // v0821.61: scored cards sit in the seat row now
+        const topOff=6+Math.max(blockH+scBox,seatH.t)+8, botOff=8+Math.max(blockH+scBox,seatH.b)+8; // v0821.63: one scored-card row reserved (row never wraps)
         const SP2=[
           {bottom:botOff,left:"50%",transform:"translateX(-50%)"},
           {right:sideW+6,top:"50%",transform:"translateY(-50%)"},
@@ -3969,13 +3969,13 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
             {/* TOP seat — pl[2] */}
             <div ref={topSeatRef} style={{position:"absolute",top:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"96%"}}>
-              {/* v0821.61: scored cards on the same row → seat block height never changes */}
-              <div style={{display:"flex",alignItems:"center",gap:6,maxWidth:"100%"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:"100%"}}>
                 <SeatTag i={2}/>
                 <Ava i={2} size={avaSz}/>
                 <Stack i={2} vert={false}/>
-                <SCP wc={S.wonCards[2]} vert={false} nowrap/>
               </div>
+              {/* v0821.63: scored cards on their own row again, but never wrap (one centered line) */}
+              <SCP wc={S.wonCards[2]} vert={false} nowrap/>
             </div>
 
             {/* LEFT seat — pl[3] */}
@@ -3996,11 +3996,11 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
             {/* BOTTOM seat — pl[0] (me) */}
             <div ref={botSeatRef} style={{position:"absolute",bottom:5,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:4,zIndex:5,maxWidth:"96%"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,maxWidth:"100%"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,maxWidth:"100%"}}>
                 <Ava i={0} size={avaSz}/>
                 <SeatTag i={0}/>
-                <SCP wc={S.wonCards[0]} vert={false} nowrap/>
               </div>
+              <SCP wc={S.wonCards[0]} vert={false} nowrap/>
             </div>
 
             {/* bot thinking badge */}
