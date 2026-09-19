@@ -1,7 +1,7 @@
 # จับหมู (Jabmoo) — HANDOFF / CONTEXT FILE #8
 > วางไฟล์นี้ใน Project knowledge (แทน jabmoo-handoff_7.md) · Claude อ่านก่อนเสมอ ตอบไทย สั้น ตรง ไม่ชม · แนบ commit message ทุกครั้งที่ส่งไฟล์
-> อัปเดตล่าสุด: **prod v0821.72 / dev v0821.72-dev** (2026-09-19) — **prod = dev ทุกบรรทัด ยกเว้น 6 บรรทัด dev-only** · A push เองผ่าน GitHub Desktop
-> ⚠️ แชท .71/.72 ตันกลางคัน — **ต้องเช็กก่อนว่า A โหลดไฟล์ .72 ทั้ง 2 ตัวไปแล้วจริงหรือยัง** ถ้ายัง ต้อง regen จาก .70 ใหม่
+> อัปเดตล่าสุด: **prod v0821.74 / dev v0821.74-dev** (2026-09-19) — **prod = dev ทุกบรรทัด ยกเว้น 6 บรรทัด dev-only** · A push เองผ่าน GitHub Desktop
+> ✅ ยืนยันแล้ว: A ได้ไฟล์ .72 ครบ (แชท .71/.72 ตันแต่ไฟล์ออกทัน)
 
 ## 1. โปรเจกต์คืออะไร
 เกมไพ่จับหมู (Gong Zhu แบบไทย) ของ A — single-file HTML (React 18 + Babel CDN) เล่นกับ bot 3 ตัว (Monte-Carlo AI) หรือออนไลน์ มีโปรไฟล์/XP/HoF/coin ผ่าน Supabase
@@ -10,8 +10,8 @@
 ## 2. ไฟล์และตำแหน่ง
 | ไฟล์ | เวอร์ชัน | หมายเหตุ |
 |---|---|---|
-| jabmoo.html | **v0821.72** | prod — COIN_ON=true, ~1.52MB |
-| jabmoo-dev.html | **v0821.72-dev** | ต่าง prod **6 บรรทัด**: manifest-dev/icon-dev/ชื่อแอป DEV + `__JM_DEV=true` + VER + COIN_ON gate |
+| jabmoo.html | **v0821.74** | prod — COIN_ON=true, ~1.52MB |
+| jabmoo-dev.html | **v0821.74-dev** | ต่าง prod **6 บรรทัด**: manifest-dev/icon-dev/ชื่อแอป DEV + `__JM_DEV=true` + VER + COIN_ON gate |
 | jabmoo-admin.html | - | PIN=1828 · ลบผู้เล่นผ่าน SQL Editor เท่านั้น |
 - Repo: https://github.com/Anurat-SUV/-Jabmoo (main=deploy Pages) | Live: https://anurat-suv.github.io/-Jabmoo/jabmoo.html
 - **A push ผ่าน GitHub Desktop** (clone ที่ `D:\Work\VsProject\jabmoo-git\-Jabmoo`) — ขั้นตอน: ก๊อปไฟล์ทับ → Commit to main → Push origin
@@ -48,9 +48,9 @@
 - blowGuard / bayes Q♠ / SPADE CAMPAIGN + qsPosterior gate / SLAM DEFENSE (slamRisk + prune + penalty −150) / hlak (OFF) — ไม่แตะมาหลายรอบแล้ว
 - heuristic เดิมครบ (Threat/EARLY HEART/788 containment/PIG EXIT/PROFIT GUARD/J♦ BAN/jdBoss/COVER GUARD/WOUNDED LEAD BAN/J♦ FOLLOW/J♦ COVER 50/50)
 
-## 6. UI — สถานะปัจจุบัน (.72 ทั้ง prod+dev)
+## 6. UI — สถานะปัจจุบัน (.74 ทั้ง prod+dev)
 **Landing**: hero ภาพเดียว `JM_HERO2` · เมนู 6 การ์ด · ชิปโป๊กเกอร์ 7 โต๊ะ · แถวตั้งค่า 3 การ์ดทอง · การ์ด VS BOT/ONLINE · root มี paddingTop safe-area
-**Header**: ไอคอนหมูใส่แว่นกลม `JM_ICON_PIG` (SVG วาดเอง ฝังเป็น data URI, .72) แทน emoji 🐷 เดิม
+**Header**: `JM_ICON_PIG` = **ไอคอนแอปจริงของ A** (icon-180.png → 72px webp base64 ~5KB, .73) · ใช้ 2 จุด: header portrait (24px) + header landscape (22px) · .72 เคยเป็น SVG หมูใส่แว่น — ถอนออกแล้ว
 **In-game portrait**:
 - `TABLE_BG` = ภาพผ้าโต๊ะของ A (2:3, 720×1080 webp 56KB) เต็มพื้นที่ · ♠ นูนกลางผ้า
 - 4 ที่นั่งบนขอบไม้: ชื่อ → ป้ายคะแนน `เกมนี้ | รวม` → ชิป Lv/💰 → avatar วงทอง (เรืองแสงเมื่อถึงตา) → หลังไพ่ซ้อน → กล่องไพ่แต้มแถวของตัวเอง บรรทัดเดียวไม่ตัดบรรทัด
@@ -67,7 +67,9 @@
 - 3 ที่นั่งคู่แข่งวางบนราว ใช้ component ชุดเดียวกับ portrait (ชื่อ → ป้ายคะแนน → avatar วงทอง → หลังไพ่ซ้อน → ไพ่แต้ม)
 - ที่นั่งตัวเองย้ายเข้าไปอยู่ในแผงมือไพ่ ข้างไพ่ 13 ใบ + ปุ่มเล่นเขียว-ทอง
 - port ครบจาก portrait: สรุปคะแนนต่อเกม, ปุ่ม ⚡ จบเร็ว, drawer แชต, ปุ่มอิโมจิ, modal ประวัติคะแนน
-**หน้าจบเกม**: ถ้วย+ริบบิ้น · ตาราง · ปุ่ม เล่นอีกรอบ (ซ้าย) + หน้าแรก/ออกจากห้อง (ขวา) แถวเดียว · แถบ coin · root `position:fixed` สูง `--vh`
+- **safe-area ซ้าย/ขวา (.74)**: ที่นั่งซ้าย/ขวา + ไพ่ที่ลงของทั้งสอง + header + แผงมือไพ่ + ปุ่ม ⚡/😊/💬 เลี่ยง Dynamic Island ด้วย `max(env(safe-area-inset-left/right),var(--sal,0px))` (ผ้าโต๊ะยัง full-bleed)
+**หน้าจบเกม portrait**: ถ้วย+ริบบิ้น · ตาราง · ปุ่ม เล่นอีกรอบ (ซ้าย) + หน้าแรก/ออกจากห้อง (ขวา) แถวเดียว · แถบ coin · root `position:fixed` สูง `--vh`
+**หน้าจบเกม landscape (.74 ใหม่)**: `GameOver` รับ prop `land={orient==="landscape"}` → แยก branch เต็มจอ 2 คอลัมน์ ไม่ scroll · ซ้าย = ถ้วย+ริบบิ้น"จบเกม!"+ผู้ชนะ+กล่อง coin · ขวา = ตารางอันดับ + แถวปุ่ม [เล่นอีกรอบ | หน้าแรก | 📊 | 📋] · ประวัติคะแนนเป็น overlay เต็มจอ · portrait branch ไม่แตะ
 **กติกา/วิธีเล่น**: รูป poster ของ A เต็มหน้า — ข้อ 3 เป็น HTML สด
 **Hall of Fame**: แท็บ ฝีมือ → XP → เศรษฐี, default=ฝีมือ, โพเดียมทุกแท็บ ตารางเริ่มอันดับ 4
 **หมูประจำตัว**: id 3 = "เจ้าหญิงหมู" รูปถือไพ่ของ A ขอบชมพู · หน้า welcome ใช้ avatar นี้
@@ -76,6 +78,7 @@
 ## 7. VIEWPORT / iOS
 - อาการ: iPhone PWA เหลือแถบตายก้นจอ 59px · header ซ้อน status bar
 - เหตุ: iOS 26 home-screen app รายงาน `innerHeight = screen − status bar` (430×873/932) แต่ `env(safe-area-inset-top)=0`
+- **`--sal` (.74)**: side inset สำหรับ landscape — probe `env(safe-area-inset-left/right)` ก่อน ถ้าได้ 0 และ viewport ไม่ถูกหดอยู่แล้ว (`screen ยาว − innerWidth < 24`) และเป็น iOS จอยาว (ratio ≥1.95) → fallback 59px (จอสั้น ≥393) / 47px
 - แก้: `--vh` จาก `max(innerHeight, visualViewport.height)` วัดซ้ำที่ 0.1/0.4/1/2.5/5s + pageshow/visibilitychange/resize · `--sat` fallback = `screen.height − innerHeight` ใช้ผ่าน `max(env(safe-area-inset-top),var(--sat,0px))` · status bar = `black` — **ต้อง Add to Home Screen ใหม่ถึงมีผล**
 - ป้าย DEV แสดงสด: `ih= vv= sc= pwa sat= vh=` (เครื่องมือ debug หลัก)
 
@@ -91,7 +94,7 @@
 - `playCountBeep` (.71) ดังขึ้น 3 เท่า 2 oscillator detune
 
 ## 10. TODO
-1. **ทดสอบจริง .71/.72**: นับถอยหลัง + เสียงบี๊บบนมือถือจริง · landscape ใหม่บนเครื่องจริงทุกขนาด
+1. **ทดสอบจริง .71-.74**: นับถอยหลัง + เสียงบี๊บบนมือถือจริง · landscape ใหม่ทุกขนาด · **ยืนยัน --sal ว่าไพ่แต้มซ้ายพ้น Dynamic Island จริง (ถ้ายังโดน = เพิ่มค่า fallback)** · หน้าจบเกมแนวนอน
 2. ตัดสินใจ single-file vs `/img/` แยก (~1.52MB)
 3. ทดสอบจริง 2 เครื่อง: online rejoin (.66) + rematch ready (.65) + แชตบับเบิล (.68)
 4. วัดผล live ×500: spGamble (.64) ไม่เคย bench · SQL Kob per_match + bot_blowups<−600 · hlak ลอง `{"chars":{"thepjab":{"hlak":0.3}}}`
@@ -116,4 +119,4 @@ A ส่ง log/ภาพ/ไอเดีย → reproduce → แก้ → reg
 - **แชทยาว: พอรู้สึกว่าใกล้ตัน ให้สร้าง handoff ใหม่ทันที อย่ารอจบงาน**
 
 ## 13. ประวัติ .35-.72
-.35-.41 โต๊ะใหม่ (TABLE_BG, 4 ที่นั่ง, ไพ่ชิดขอบ, poster, ไอคอน PWA) | .42 วัดบล็อกที่นั่งจาก DOM | .43-.47 iOS viewport | .46 HoF โพเดียม | .48-.51 สรุปคะแนนกล่องตามที่นั่ง + อิโมจิ 12 + hold 5 วิ | .52-.53 GameOver ไม่ล้นจอ + landing safe-area | .54 corner index + color-scheme dark | .55-.56 (dev only ถอนออก .60) | .57-.59 หมูเจ้าหญิง avatar id3 | .60-.61 corner index ตามจำนวนใบ | .62 ⚡ จบเร็ว | .63 ไพ่แต้มแถวตัวเอง | .64 SPADE HIGH GAMBLE | .65 rematch ready vote | .66 online rejoin + AudioContext เดียว | .67 ชื่อบอทซ้ำเติมเลข | .68 แชตบับเบิล | .69 ปุ่มกลับห้องเดิม | .70 ปุ่มแชตกลม | **.71 countdown กลางโต๊ะ + เสียงบี๊บดังขึ้น** | **.72 ไอคอนหมูแว่น + เกม N/M + landscape รื้อใหม่ธีมเขียว-ทอง**
+.35-.41 โต๊ะใหม่ (TABLE_BG, 4 ที่นั่ง, ไพ่ชิดขอบ, poster, ไอคอน PWA) | .42 วัดบล็อกที่นั่งจาก DOM | .43-.47 iOS viewport | .46 HoF โพเดียม | .48-.51 สรุปคะแนนกล่องตามที่นั่ง + อิโมจิ 12 + hold 5 วิ | .52-.53 GameOver ไม่ล้นจอ + landing safe-area | .54 corner index + color-scheme dark | .55-.56 (dev only ถอนออก .60) | .57-.59 หมูเจ้าหญิง avatar id3 | .60-.61 corner index ตามจำนวนใบ | .62 ⚡ จบเร็ว | .63 ไพ่แต้มแถวตัวเอง | .64 SPADE HIGH GAMBLE | .65 rematch ready vote | .66 online rejoin + AudioContext เดียว | .67 ชื่อบอทซ้ำเติมเลข | .68 แชตบับเบิล | .69 ปุ่มกลับห้องเดิม | .70 ปุ่มแชตกลม | **.71 countdown กลางโต๊ะ + เสียงบี๊บดังขึ้น** | **.72 ไอคอนหมูแว่น + เกม N/M + landscape รื้อใหม่ธีมเขียว-ทอง** | **.73 header ในเกมใช้ไอคอนแอปจริง** | **.74 landscape safe-area ซ้าย/ขวา (--sal) + หน้าจบเกมแนวนอน**
