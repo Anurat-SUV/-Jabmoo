@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.69-dev";
+  var VER="v0821.70-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3729,6 +3729,11 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   function EmoteFab(){
     return (
       <React.Fragment>
+        {net&&(
+          <button onClick={()=>{if(chatOpen){setChatOpen(false);}else{openChat();}}} style={{position:"fixed",left:8,bottom:"calc(130px + env(safe-area-inset-bottom))",zIndex:270,width:36,height:36,borderRadius:18,border:"1.5px solid rgba(212,175,55,0.5)",background:chatOpen?"#d4af37":"rgba(13,74,50,0.92)",color:chatOpen?"#3b2d00":"#fde68a",fontSize:17,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.4)"}}>
+            💬{unread>0&&!chatOpen&&<span style={{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",borderRadius:9,fontSize:9,padding:"0 4px",fontWeight:800}}>{unread}</span>}
+          </button>
+        )}
         <button onClick={()=>setEmoteOpen(o=>!o)} style={{position:"fixed",left:8,bottom:"calc(88px + env(safe-area-inset-bottom))",zIndex:270,width:36,height:36,borderRadius:18,border:"1.5px solid rgba(212,175,55,0.5)",background:"rgba(37,99,235,0.92)",color:"#fff",fontSize:18,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.4)"}}>😊</button>
         {emoteOpen&&(
           <div style={{position:"fixed",left:8,bottom:"calc(130px + env(safe-area-inset-bottom))",zIndex:271,background:"#fff",borderRadius:12,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.3)",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
@@ -4159,6 +4164,12 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
                 </button>
               );
             })()}
+            {/* v0821.70: chat FAB on the felt, left of the emote one (online only) */}
+            {net&&(
+              <button onClick={()=>{if(chatOpen){setChatOpen(false);}else{openChat();}}} style={{position:"absolute",bottom:8,right:54,zIndex:80,width:38,height:38,borderRadius:19,border:"2px solid rgba(212,175,55,0.7)",background:chatOpen?"#d4af37":"rgba(13,74,50,0.92)",color:chatOpen?"#3b2d00":"#fde68a",fontSize:18,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.5)"}}>
+                💬{unread>0&&!chatOpen&&<span style={{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",borderRadius:9,fontSize:9,padding:"0 4px",fontWeight:800}}>{unread}</span>}
+              </button>
+            )}
             {/* emote FAB — bottom-right of the rail */}
             <button onClick={()=>setEmoteOpen(o=>!o)} style={{position:"absolute",bottom:8,right:8,zIndex:80,width:38,height:38,borderRadius:19,border:"2px solid rgba(212,175,55,0.7)",background:"rgba(37,99,235,0.92)",color:"#fff",fontSize:19,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.5)"}}>😊</button>
             {emoteOpen&&(
