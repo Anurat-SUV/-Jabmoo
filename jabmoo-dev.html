@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.78-dev";
+  var VER="v0821.79-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -4283,7 +4283,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const typing=chatOpen&&(net||CHAT_SOLO);
   return (
     <React.Fragment>
-    <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none",transform:typing?"scale(0.6)":"none",transformOrigin:"top left",transition:"transform .18s"}}>
+    <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none",height:(typing&&vvH>0)?vvH+"px":undefined}}>
       <Overlays/>
       {fw&&<Fireworks/>}
       {hostGone&&(
@@ -4392,7 +4392,13 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           {left:sideW+6,top:"50%",transform:"translateY(-50%)"},
         ];
         return (
-          <div style={{flex:1,position:"relative",minHeight:0,backgroundImage:"url("+TABLE_BG+")",backgroundSize:"cover",backgroundPosition:"center",overflow:"hidden",zIndex:1}}>
+          <div style={{flex:1,minHeight:0,display:"flex",position:"relative"}}>
+          {/* v0821.79: while typing the felt keeps its own layout and is scaled to 60% at the top-left of
+              this wrapper; the chat column takes the remaining 40%, header and hand panel stay full size */}
+          <div style={{flex:typing?"0 0 60%":"1 1 0%",minWidth:0,minHeight:0,position:"relative",overflow:"hidden",display:"flex"}}>
+          <div style={typing
+              ?{position:"absolute",left:0,top:0,width:"166.667%",height:"166.667%",transform:"scale(0.6)",transformOrigin:"top left",backgroundImage:"url("+TABLE_BG+")",backgroundSize:"cover",backgroundPosition:"center",overflow:"hidden",zIndex:1}
+              :{flex:1,position:"relative",minHeight:0,backgroundImage:"url("+TABLE_BG+")",backgroundSize:"cover",backgroundPosition:"center",overflow:"hidden",zIndex:1}}>
             {/* v0821.71 (A): big semi-transparent turn countdown on the felt, card-sized.
                 Shows 10→0 on your own turn; red + pulse in the last 3s. Sits under the
                 seats/played cards (zIndex 4) so it never covers a card. */}
@@ -4560,6 +4566,31 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             );
           })()}
           </div>
+          </div>
+          {typing&&(
+            <div style={{flex:"0 0 40%",minWidth:0,display:"flex",flexDirection:"column",boxSizing:"border-box",background:"rgba(4,30,20,0.94)",borderLeft:"1.5px solid rgba(212,175,55,0.55)",zIndex:2}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",borderBottom:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
+                <span style={{fontSize:12,fontWeight:800,color:"#fde68a"}}>💬 {L?"แชต":"Chat"}</span>
+                <button onClick={()=>setChatOpen(false)} style={{fontSize:16,border:"none",background:"none",cursor:"pointer",color:"#a7f3d0",padding:"0 2px",lineHeight:1}}>✕</button>
+              </div>
+              <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"5px 8px",display:"flex",flexDirection:"column",gap:4}}>
+                {chatMsgs.length===0&&<div style={{fontSize:11,color:"rgba(167,243,208,0.6)",textAlign:"center",marginTop:16}}>{L?"ยังไม่มีข้อความ":"No messages"}</div>}
+                {chatMsgs.map((m,i)=>(
+                  <div key={i} style={{fontSize:12,lineHeight:1.35,wordBreak:"break-word"}}>
+                    <span style={{fontWeight:700,color:m.id===myId?"#fde68a":"#a7f3d0"}}>{m.name}: </span>
+                    <span style={{color:"#f3e9c8"}}>{m.text}</span>
+                  </div>
+                ))}
+                <div ref={chatEndRef}/>
+              </div>
+              <div style={{display:"flex",gap:5,padding:"5px 6px",borderTop:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
+                <input autoFocus value={chatIn} onChange={e=>setChatIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder={L?"พิมพ์ข้อความ...":"Type..."}
+                  style={{flex:1,minWidth:0,border:"1px solid rgba(212,175,55,0.45)",borderRadius:7,padding:"7px 8px",fontSize:16,outline:"none",background:"rgba(0,0,0,0.4)",color:"#f3e9c8"}}/>
+                <button onMouseDown={e=>e.preventDefault()} onClick={sendChat} style={{padding:"7px 9px",background:chatIn.trim()?"#d4af37":"rgba(212,175,55,0.35)",border:"none",borderRadius:7,color:"#2a1a00",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>{L?"ส่ง":"Send"}</button>
+              </div>
+            </div>
+          )}
+          </div>
         );
       })()}
 
@@ -4581,13 +4612,18 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             </div>
           );
         })()}
-        <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap}/>
+        {/* v0821.79: while typing the play button moves to the right of the hand (one row, full size) */}
+        <div style={{display:"flex",flexDirection:typing?"row":"column",alignItems:typing?"center":"stretch",gap:typing?6:0}}>
+        <div style={{flex:1,minWidth:0}}>
+        <HandCards hands0={S.hands[0]} ls={ls} trick={S.trick} curIdx={S.curIdx} phase={S.phase} selected={S.selected} ap={ap} avail={typing?Math.max(120,(typeof window!=="undefined"?window.innerWidth:375)-16-96):undefined}/>
+        </div>
         {/* v0821.27-dev: gap below cards + full-width play button — cancel removed
             (tapping the selected card again already deselects: SEL val:isSel?null:oi) */}
-        <div style={{display:"flex",marginTop:4}}>
+        <div style={{display:"flex",marginTop:typing?0:4,flex:typing?"0 0 90px":undefined}}>
           <button onClick={humanPlay} style={{flex:1,padding:12,background:S.curIdx===0&&S.phase==="playing"?"linear-gradient(180deg,#1a6b47 0%,#0d4a32 55%,#0a3626 100%)":"rgba(255,255,255,0.04)",border:S.curIdx===0&&S.phase==="playing"?"2px solid #d4af37":"1.5px solid rgba(212,175,55,0.22)",borderRadius:12,fontSize:17,fontWeight:800,color:S.curIdx===0&&S.phase==="playing"?"#fde68a":"#5c6b60",cursor:S.curIdx===0&&S.phase==="playing"?"pointer":"default",boxShadow:S.curIdx===0&&S.phase==="playing"?"0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)":"none",textShadow:S.curIdx===0&&S.phase==="playing"?"0 1px 2px rgba(0,0,0,0.6)":"none"}}>
             {S.selected!==null&&S.hands[0][S.selected]?(playTxt+" "+S.hands[0][S.selected].rank+S.hands[0][S.selected].suit):playTxt}
           </button>
+        </div>
         </div>
         {S.errMsg && <div style={{fontSize:12,color:"#dc2626",textAlign:"center",marginTop:5}}>{S.errMsg}</div>}
       </div>
@@ -4651,31 +4687,6 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         </div>
       )}
     </div>
-    {/* v0821.78: full-height chat column on the right while typing (keyboard-aware height) */}
-    {typing&&(
-      <div style={{position:"fixed",top:0,right:0,width:"40%",height:vvH>0?vvH+"px":"var(--vh,100dvh)",zIndex:290,display:"flex",flexDirection:"column",boxSizing:"border-box",
-        paddingTop:"max(env(safe-area-inset-top),var(--sat,0px))",background:"rgba(4,30,20,0.94)",borderLeft:"1.5px solid rgba(212,175,55,0.55)",boxShadow:"-4px 0 16px rgba(0,0,0,0.45)"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",borderBottom:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
-          <span style={{fontSize:12,fontWeight:800,color:"#fde68a"}}>💬 {L?"แชต":"Chat"}</span>
-          <button onClick={()=>setChatOpen(false)} style={{fontSize:16,border:"none",background:"none",cursor:"pointer",color:"#a7f3d0",padding:"0 2px",lineHeight:1}}>✕</button>
-        </div>
-        <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"5px 8px",display:"flex",flexDirection:"column",gap:4}}>
-          {chatMsgs.length===0&&<div style={{fontSize:11,color:"rgba(167,243,208,0.6)",textAlign:"center",marginTop:16}}>{L?"ยังไม่มีข้อความ":"No messages"}</div>}
-          {chatMsgs.map((m,i)=>(
-            <div key={i} style={{fontSize:12,lineHeight:1.35,wordBreak:"break-word"}}>
-              <span style={{fontWeight:700,color:m.id===myId?"#fde68a":"#a7f3d0"}}>{m.name}: </span>
-              <span style={{color:"#f3e9c8"}}>{m.text}</span>
-            </div>
-          ))}
-          <div ref={chatEndRef}/>
-        </div>
-        <div style={{display:"flex",gap:5,padding:"6px 6px",borderTop:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
-          <input autoFocus value={chatIn} onChange={e=>setChatIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder={L?"พิมพ์ข้อความ...":"Type..."}
-            style={{flex:1,minWidth:0,border:"1px solid rgba(212,175,55,0.45)",borderRadius:7,padding:"7px 8px",fontSize:16,outline:"none",background:"rgba(0,0,0,0.4)",color:"#f3e9c8"}}/>
-          <button onMouseDown={e=>e.preventDefault()} onClick={sendChat} style={{padding:"7px 9px",background:chatIn.trim()?"#d4af37":"rgba(212,175,55,0.35)",border:"none",borderRadius:7,color:"#2a1a00",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>{L?"ส่ง":"Send"}</button>
-        </div>
-      </div>
-    )}
     </React.Fragment>
   );
   }
