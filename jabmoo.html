@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.77";
+  var VER="v0821.78";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -3554,6 +3554,17 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const [chatOpen,setChatOpen]=useState(false);
   const [chatMsgs,setChatMsgs]=useState([]);
   const [chatIn,setChatIn]=useState("");
+  // v0821.78 (A): TYPING MODE — when the keyboard is up iOS scrolls the page and the table vanishes.
+  // Now chatOpen = typing mode: the whole table scales to 60% at top-left, a full-height chat column
+  // sits on the right, sized to the visual viewport (= the area above the keyboard).
+  const [vvH,setVvH]=useState(0);
+  const chatOpenRef=useRef(false);
+  useEffect(()=>{
+    const vv=window.visualViewport;if(!vv)return;
+    const f=()=>{setVvH(Math.round(vv.height));if(chatOpenRef.current){try{window.scrollTo(0,0);}catch(e){}}};
+    f();vv.addEventListener("resize",f);vv.addEventListener("scroll",f);
+    return()=>{vv.removeEventListener("resize",f);vv.removeEventListener("scroll",f);};
+  },[]);
   const [unread,setUnread]=useState(0);
   const chatEndRef=useRef(null);
   const myName=net?cfg.players[mySeat].name:(L?"คุณ":"You");
@@ -3577,6 +3588,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     setChatIn("");
   }
   function openChat(){setChatOpen(true);setUnread(0);}
+  chatOpenRef.current=chatOpen;
   const chatPanelRef=useRef(null); // v0821.76 portrait felt chat panel
 
   // ── EMOTES ────────────────────────────────────────────────────
@@ -4262,8 +4274,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const totalTxt=L?"รวม":"Total";
   const curTxt=L?"เกมนี้":"Now";
 
+  const typing=chatOpen&&(net||CHAT_SOLO);
   return (
-    <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
+    <React.Fragment>
+    <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none",transform:typing?"scale(0.6)":"none",transformOrigin:"top left",transition:"transform .18s"}}>
       <Overlays/>
       {fw&&<Fireworks/>}
       {hostGone&&(
@@ -4484,16 +4498,14 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             {/* v0821.76 (A): chat lives ON the felt — translucent panel on the right, from just under the
                 right seat's block down to the chat/emote buttons. Always there while online; faint
                 until you tap it (chatOpen), full opacity while typing, faint again on blur. */}
-            {(net||CHAT_SOLO)&&!((S.phase==="roundSummary"&&S.roundScores)||(S.gameOver&&goHold&&S.lastRoundScores))&&(
+            {(net||CHAT_SOLO)&&!chatOpen&&!((S.phase==="roundSummary"&&S.roundScores)||(S.gameOver&&goHold&&S.lastRoundScores))&&(
               <div ref={chatPanelRef} onClick={()=>{if(!chatOpen)openChat();}}
                 style={{position:"absolute",right:6,top:"max(calc(27% + "+(seatH.r+8)+"px), calc(50% + "+(Math.round(tH2/2)+8)+"px))",bottom:54,left:"max(calc(50% + "+(Math.round(tW2/2)+8)+"px), calc(100% - 196px))",zIndex:79,
                   display:"flex",flexDirection:"column",borderRadius:10,overflow:"hidden",
-                  background:chatOpen?"rgba(4,30,20,0.62)":"rgba(4,30,20,0.28)",border:"1px solid rgba(212,175,55,"+(chatOpen?0.6:0.28)+")",
-                  opacity:chatOpen?1:0.55,transition:"opacity .18s,background .18s",backdropFilter:"blur(2px)",WebkitBackdropFilter:"blur(2px)",
-                  boxShadow:chatOpen?"0 3px 12px rgba(0,0,0,0.45)":"none"}}>
+                  background:"rgba(4,30,20,0.28)",border:"1px solid rgba(212,175,55,0.28)",
+                  opacity:0.6,backdropFilter:"blur(2px)",WebkitBackdropFilter:"blur(2px)"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"2px 6px",borderBottom:"1px solid rgba(212,175,55,0.25)",flexShrink:0}}>
-                  <span style={{fontSize:10,fontWeight:700,color:"#fde68a"}}>💬 {L?"แชต":"Chat"}{unread>0&&!chatOpen?<span style={{marginLeft:4,background:"#ef4444",color:"#fff",borderRadius:8,fontSize:8,padding:"0 4px",fontWeight:800}}>{unread}</span>:null}</span>
-                  {chatOpen&&<button onClick={e=>{e.stopPropagation();setChatOpen(false);}} style={{fontSize:12,border:"none",background:"none",cursor:"pointer",color:"#a7f3d0",padding:"0 2px",lineHeight:1}}>✕</button>}
+                  <span style={{fontSize:10,fontWeight:700,color:"#fde68a"}}>💬 {L?"แชต":"Chat"}{unread>0?<span style={{marginLeft:4,background:"#ef4444",color:"#fff",borderRadius:8,fontSize:8,padding:"0 4px",fontWeight:800}}>{unread}</span>:null}</span>
                 </div>
                 <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"3px 6px",display:"flex",flexDirection:"column",gap:2}}>
                   {chatMsgs.length===0&&<div style={{fontSize:9.5,color:"rgba(167,243,208,0.6)",textAlign:"center",marginTop:8}}>{L?"ยังไม่มีข้อความ":"No messages"}</div>}
@@ -4506,11 +4518,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
                   <div ref={chatEndRef}/>
                 </div>
                 <div style={{display:"flex",gap:4,padding:"3px 5px",borderTop:"1px solid rgba(212,175,55,0.25)",flexShrink:0}}>
-                  <input value={chatIn} onChange={e=>setChatIn(e.target.value)} onFocus={()=>{if(!chatOpen)openChat();}}
-                    onBlur={()=>{setTimeout(()=>{const p=chatPanelRef.current;if(p&&p.contains(document.activeElement))return;setChatOpen(false);},150);}}
-                    onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder={chatOpen?(L?"พิมพ์ข้อความ...":"Type..."):(L?"แตะเพื่อพิมพ์":"Tap to chat")}
-                    style={{flex:1,minWidth:0,border:"1px solid rgba(212,175,55,0.35)",borderRadius:6,padding:"4px 6px",fontSize:11,outline:"none",background:"rgba(0,0,0,0.35)",color:"#f3e9c8"}}/>
-                  <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();sendChat();}} style={{padding:"4px 8px",background:chatIn.trim()?"#d4af37":"rgba(212,175,55,0.35)",border:"none",borderRadius:6,color:"#2a1a00",fontSize:11,fontWeight:800,cursor:"pointer",flexShrink:0}}>{L?"ส่ง":"Send"}</button>
+                  <div style={{flex:1,minWidth:0,border:"1px solid rgba(212,175,55,0.35)",borderRadius:6,padding:"4px 6px",fontSize:11,background:"rgba(0,0,0,0.35)",color:"rgba(243,233,200,0.7)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{chatIn||(L?"แตะเพื่อพิมพ์":"Tap to chat")}</div>
                 </div>
               </div>
             )}
@@ -4637,6 +4645,32 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         </div>
       )}
     </div>
+    {/* v0821.78: full-height chat column on the right while typing (keyboard-aware height) */}
+    {typing&&(
+      <div style={{position:"fixed",top:0,right:0,width:"40%",height:vvH>0?vvH+"px":"var(--vh,100dvh)",zIndex:290,display:"flex",flexDirection:"column",boxSizing:"border-box",
+        paddingTop:"max(env(safe-area-inset-top),var(--sat,0px))",background:"rgba(4,30,20,0.94)",borderLeft:"1.5px solid rgba(212,175,55,0.55)",boxShadow:"-4px 0 16px rgba(0,0,0,0.45)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",borderBottom:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
+          <span style={{fontSize:12,fontWeight:800,color:"#fde68a"}}>💬 {L?"แชต":"Chat"}</span>
+          <button onClick={()=>setChatOpen(false)} style={{fontSize:16,border:"none",background:"none",cursor:"pointer",color:"#a7f3d0",padding:"0 2px",lineHeight:1}}>✕</button>
+        </div>
+        <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"5px 8px",display:"flex",flexDirection:"column",gap:4}}>
+          {chatMsgs.length===0&&<div style={{fontSize:11,color:"rgba(167,243,208,0.6)",textAlign:"center",marginTop:16}}>{L?"ยังไม่มีข้อความ":"No messages"}</div>}
+          {chatMsgs.map((m,i)=>(
+            <div key={i} style={{fontSize:12,lineHeight:1.35,wordBreak:"break-word"}}>
+              <span style={{fontWeight:700,color:m.id===myId?"#fde68a":"#a7f3d0"}}>{m.name}: </span>
+              <span style={{color:"#f3e9c8"}}>{m.text}</span>
+            </div>
+          ))}
+          <div ref={chatEndRef}/>
+        </div>
+        <div style={{display:"flex",gap:5,padding:"6px 6px",borderTop:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
+          <input autoFocus value={chatIn} onChange={e=>setChatIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder={L?"พิมพ์ข้อความ...":"Type..."}
+            style={{flex:1,minWidth:0,border:"1px solid rgba(212,175,55,0.45)",borderRadius:7,padding:"7px 8px",fontSize:16,outline:"none",background:"rgba(0,0,0,0.4)",color:"#f3e9c8"}}/>
+          <button onMouseDown={e=>e.preventDefault()} onClick={sendChat} style={{padding:"7px 9px",background:chatIn.trim()?"#d4af37":"rgba(212,175,55,0.35)",border:"none",borderRadius:7,color:"#2a1a00",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>{L?"ส่ง":"Send"}</button>
+        </div>
+      </div>
+    )}
+    </React.Fragment>
   );
   }
 }
