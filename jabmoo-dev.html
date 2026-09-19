@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.68-dev";
+  var VER="v0821.69-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -5016,6 +5016,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
     setTableMult(m00);
     ref.current={hostId:selfId,seats:s0,members:m0,selfId,name:nm,tableMult:m00};
     setRoom(r);setHostId(selfId);setMembers(m0);setSeats(s0);setName(nm);setPhase("room");
+    try{localStorage.setItem("jm_last_room",JSON.stringify({room:r,name:nm,t:Date.now()}));}catch(e){} // v0821.69
     openTx(r);
   }
   function joinRoom(){
@@ -5024,6 +5025,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
     const nm=name.trim()||(L?"ผู้เล่น":"Player");
     ref.current={hostId:"",seats:emptySeats(),members:{[selfId]:nm},selfId,name:nm};
     setRoom(r);setName(nm);setMembers({[selfId]:nm});setPhase("room");
+    try{localStorage.setItem("jm_last_room",JSON.stringify({room:r,name:nm,t:Date.now()}));}catch(e){} // v0821.69: one-tap rejoin
     openTx(r,()=>{if(tx.current)tx.current.send("hello",{name:nm});});
   }
 
@@ -5091,6 +5093,23 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
             {connKind==="supabase"&&SB_BAKED&&<div style={{fontSize:11,color:"#34d399"}}>{L?"ตั้งค่า Supabase ไว้แล้ว ✓":"Supabase configured ✓"}</div>}
           </div>
 
+          {/* v0821.69: coming back after a reload/app close — rejoin the last room in one tap */}
+          {(()=>{
+            let lr=null;try{lr=JSON.parse(localStorage.getItem("jm_last_room")||"null");}catch(e){}
+            if(!lr||!lr.room||(Date.now()-(lr.t||0))>6*3600*1000)return null;
+            return (
+              <button onClick={()=>{
+                const nm=(name.trim()||lr.name||(L?"ผู้เล่น":"Player"));
+                setCodeIn(lr.room);
+                ref.current={hostId:"",seats:emptySeats(),members:{[selfId]:nm},selfId,name:nm};
+                setRoom(lr.room);setName(nm);setMembers({[selfId]:nm});setPhase("room");
+                try{localStorage.setItem("jm_last_room",JSON.stringify({room:lr.room,name:nm,t:Date.now()}));}catch(e){}
+                openTx(lr.room,()=>{if(tx.current)tx.current.send("hello",{name:nm});});
+              }} style={{...OBTN,marginBottom:10,background:"linear-gradient(180deg,#1a6b47,#0b3d2e)",border:"2px solid #d4af37",color:"#fde68a"}}>
+                ↩ {L?"กลับเข้าห้องเดิม":"Rejoin room"} {lr.room}
+              </button>
+            );
+          })()}
           <button onClick={createRoom} style={OBTN}>{L?"สร้างห้องใหม่":"Create room"}</button>
           <div style={{textAlign:"center",color:"#8fb0a1",fontSize:12,margin:"10px 0"}}>{L?"— หรือ —":"— or —"}</div>
           <div style={{display:"flex",gap:8}}>
