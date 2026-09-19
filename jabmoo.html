@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.81";
+  var VER="v0821.82";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -3559,9 +3559,11 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   // sits on the right, sized to the visual viewport (= the area above the keyboard).
   const [vvH,setVvH]=useState(0);
   const chatOpenRef=useRef(false);
+  const typingHRef=useRef(0); // v0821.82: smallest visualViewport height seen while typing = keyboard-up height; root stays at it even after the keyboard hides
+  const vhFrozenRef=useRef(typeof window!=="undefined"?window.innerHeight:667); // v0821.82: felt sizing must not react to the keyboard
   useEffect(()=>{
     const vv=window.visualViewport;if(!vv)return;
-    const f=()=>{setVvH(Math.round(vv.height));if(chatOpenRef.current){try{window.scrollTo(0,0);}catch(e){}}};
+    const f=()=>{const h=Math.round(vv.height);setVvH(h);if(chatOpenRef.current){typingHRef.current=typingHRef.current?Math.min(typingHRef.current,h):h;try{window.scrollTo(0,0);}catch(e){}}};
     f();vv.addEventListener("resize",f);vv.addEventListener("scroll",f);
     return()=>{vv.removeEventListener("resize",f);vv.removeEventListener("scroll",f);};
   },[]);
@@ -3587,7 +3589,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     if(net&&net.sendChat)net.sendChat(m);
     setChatIn("");
   }
-  function openChat(){setChatOpen(true);setUnread(0);}
+  function openChat(){typingHRef.current=0;setChatOpen(true);setUnread(0);}
   chatOpenRef.current=chatOpen;
   const chatPanelRef=useRef(null); // v0821.76 portrait felt chat panel
   const chatColRef=useRef(null), chatInRef=useRef(null); // v0821.80: typing column + its input (keep keyboard up while playing cards)
@@ -4250,7 +4252,9 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
   function PortraitView(){
   const vw=(typeof window!=="undefined"?window.innerWidth:375);
-  const vh=(typeof window!=="undefined"?window.innerHeight:667);
+  const typing=chatOpen&&(net||CHAT_SOLO);
+  if(!typing)vhFrozenRef.current=(typeof window!=="undefined"?window.innerHeight:667);
+  const vh=vhFrozenRef.current; // v0821.82: frozen while typing
   const shortSide=Math.min(vw,vh);
   const sf=Math.min(Math.max(shortSide/375,1.0),2.2);
   const tW=Math.round(42*sf), tH=Math.round(60*sf);
@@ -4275,10 +4279,11 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const totalTxt=L?"รวม":"Total";
   const curTxt=L?"เกมนี้":"Now";
 
-  const typing=chatOpen&&(net||CHAT_SOLO);
   return (
     <React.Fragment>
-    <div onMouseDown={typing?(e=>{const c=chatColRef.current;if(c&&c.contains(e.target))return;e.preventDefault();}):undefined} className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none",height:(typing&&vvH>0)?vvH+"px":undefined}}>
+    <div onMouseDown={typing?(e=>{const c=chatColRef.current;if(c&&c.contains(e.target))return;e.preventDefault();}):undefined}
+      onClickCapture={typing?(()=>{const i=chatInRef.current;if(i&&document.activeElement!==i){try{i.focus({preventScroll:true});}catch(e){}}}):undefined}
+      className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none",height:typing?((typingHRef.current||vvH||0)>0?(typingHRef.current||vvH)+"px":undefined):undefined}}>
       <Overlays/>
       {fw&&<Fireworks/>}
       {hostGone&&(
