@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.79-dev";
+  var VER="v0821.80-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -3596,6 +3596,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   function openChat(){setChatOpen(true);setUnread(0);}
   chatOpenRef.current=chatOpen;
   const chatPanelRef=useRef(null); // v0821.76 portrait felt chat panel
+  const chatColRef=useRef(null), chatInRef=useRef(null); // v0821.80: typing column + its input (keep keyboard up while playing cards)
 
   // ── EMOTES ────────────────────────────────────────────────────
   const [emotes,setEmotes]=useState([]); // {seat,emoji,id}
@@ -4283,7 +4284,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const typing=chatOpen&&(net||CHAT_SOLO);
   return (
     <React.Fragment>
-    <div className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none",height:(typing&&vvH>0)?vvH+"px":undefined}}>
+    <div onMouseDown={typing?(e=>{const c=chatColRef.current;if(c&&c.contains(e.target))return;e.preventDefault();}):undefined} className="vh100" style={{width:"100vw",background:"transparent",display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none",height:(typing&&vvH>0)?vvH+"px":undefined}}>
       <Overlays/>
       {fw&&<Fireworks/>}
       {hostGone&&(
@@ -4568,7 +4569,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           </div>
           </div>
           {typing&&(
-            <div style={{flex:"0 0 40%",minWidth:0,display:"flex",flexDirection:"column",boxSizing:"border-box",background:"rgba(4,30,20,0.94)",borderLeft:"1.5px solid rgba(212,175,55,0.55)",zIndex:2}}>
+            <div ref={chatColRef} style={{flex:"0 0 40%",minWidth:0,display:"flex",flexDirection:"column",boxSizing:"border-box",background:"rgba(4,30,20,0.94)",borderLeft:"1.5px solid rgba(212,175,55,0.55)",zIndex:2}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",borderBottom:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
                 <span style={{fontSize:12,fontWeight:800,color:"#fde68a"}}>💬 {L?"แชต":"Chat"}</span>
                 <button onClick={()=>setChatOpen(false)} style={{fontSize:16,border:"none",background:"none",cursor:"pointer",color:"#a7f3d0",padding:"0 2px",lineHeight:1}}>✕</button>
@@ -4584,7 +4585,8 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
                 <div ref={chatEndRef}/>
               </div>
               <div style={{display:"flex",gap:5,padding:"5px 6px",borderTop:"1px solid rgba(212,175,55,0.3)",flexShrink:0}}>
-                <input autoFocus value={chatIn} onChange={e=>setChatIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder={L?"พิมพ์ข้อความ...":"Type..."}
+                <input ref={chatInRef} autoFocus value={chatIn} onChange={e=>setChatIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendChat();}} placeholder={L?"พิมพ์ข้อความ...":"Type..."}
+                  onBlur={()=>{setTimeout(()=>{if(chatOpenRef.current&&chatInRef.current&&document.activeElement!==chatInRef.current){try{chatInRef.current.focus({preventScroll:true});}catch(e){}}},0);}}
                   style={{flex:1,minWidth:0,border:"1px solid rgba(212,175,55,0.45)",borderRadius:7,padding:"7px 8px",fontSize:16,outline:"none",background:"rgba(0,0,0,0.4)",color:"#f3e9c8"}}/>
                 <button onMouseDown={e=>e.preventDefault()} onClick={sendChat} style={{padding:"7px 9px",background:chatIn.trim()?"#d4af37":"rgba(212,175,55,0.35)",border:"none",borderRadius:7,color:"#2a1a00",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>{L?"ส่ง":"Send"}</button>
               </div>
