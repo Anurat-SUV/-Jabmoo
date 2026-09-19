@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.82";
+  var VER="v0821.84";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -209,7 +209,7 @@ const SEATCOL=["#3b82f6","#ef4444","#22c55e","#eab308"];
 const TURN_SECS=25;      // seconds per turn (online + any timed game)
 const TURN_SHOW=10;      // v0821.71: big on-table countdown + beeps start here (10..0)
 const SOLO_TIMER_OFF=true; // solo vs 3 bots: no countdown (A: may re-enable later — set to false)
-const EMOTES=["😂","🤣","😭","😢","😠","😱","🐷","👍","🔥","🤔","🎉","👏"]; // v0821.48: +angry/cry/laugh variants
+const EMOTES=["🙂","😄","😂","🤣","😭","😢","😠","😱","🐷","👍","🔥","🤔","🎉","👏"]; // v0821.83: +🙂 😄 (A)
 function hap(p){try{if(navigator.vibrate)navigator.vibrate(p);}catch(e){}}
 function playCardTick(){try{const ctx=jmAC();const o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=520;const t=ctx.currentTime;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.10,t+0.005);g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.1);}catch(e){}}
 function playTrickWin(){try{const ctx=jmAC();[660,880].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const t=ctx.currentTime+i*0.08;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.13,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+0.18);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+0.2);});}catch(e){}}
@@ -3576,6 +3576,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   useEffect(()=>{
     if(!net||!net.bindChat)return;
     net.bindChat((m)=>{
+      if(m&&m.id===myId)return; // v0821.83: the host relays gchat back to the sender too — we already added it locally
       setChatMsgs(prev=>[...prev,m]);
       setChatOpen(o=>{if(!o)setUnread(u=>u+1);return o;});
       showBubble(typeof m.id==="number"?m.id:null,m.text);
@@ -3658,7 +3659,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   },[coins]);
   useEffect(()=>{
     if(!net||!net.bindEmote)return;
-    net.bindEmote((m)=>{if(m&&typeof m.seat==="number")showEmote(m.seat,m.emoji);});
+    net.bindEmote((m)=>{if(m&&typeof m.seat==="number"&&m.seat!==mySeat)showEmote(m.seat,m.emoji);}); // v0821.83: skip own echo
   },[]);
 
   // ── TURN TIMER (anti-AFK) ─────────────────────────────────────
@@ -3873,8 +3874,15 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
 
   function Overlays(){
     const myDisp=net?mySeat:0;
+    const subbedMe=!!(net&&isClient&&subView.current[mySeat]); // v0821.84
     return (
       <React.Fragment>
+        {subbedMe&&(
+          <div onClick={()=>{lastRejoinAt.current=0;try{net.send("rejoin",{seat:mySeat});}catch(e){}}}
+            style={{position:"fixed",top:"calc(48px + max(env(safe-area-inset-top),var(--sat,0px)))",left:"50%",transform:"translateX(-50%)",zIndex:260,background:"rgba(220,38,38,0.92)",color:"#fff",border:"2px solid #fde68a",borderRadius:12,padding:"7px 12px",fontSize:12,fontWeight:800,boxShadow:"0 3px 10px rgba(0,0,0,0.5)",cursor:"pointer",whiteSpace:"nowrap"}}>
+            🤖 {L?"บอทกำลังเล่นแทนคุณ — แตะเพื่อกลับมาเล่นเอง":"A bot is playing your seat — tap to take it back"}
+          </div>
+        )}
         <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:250}}>
           {emotes.map(e=>{
             const p=((e.seat-mySeat)%4+4)%4;
@@ -4120,7 +4128,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           )}
           <button onClick={()=>setEmoteOpen(o=>!o)} style={{position:"absolute",bottom:8,right:"calc(8px + "+SIR+")",zIndex:80,width:36,height:36,borderRadius:18,border:"2px solid rgba(212,175,55,0.7)",background:"rgba(37,99,235,0.92)",color:"#fff",fontSize:17,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.5)"}}>😊</button>
           {emoteOpen&&(
-            <div style={{position:"absolute",bottom:50,right:"calc(6px + "+SIR+")",zIndex:81,background:"#0b3d2e",border:"1.5px solid #d4af37",borderRadius:12,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:2}}>
+            <div style={{position:"absolute",bottom:50,right:"calc(6px + "+SIR+")",zIndex:81,background:"#0b3d2e",border:"1.5px solid #d4af37",borderRadius:12,padding:6,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
               {EMOTES.map(em=><button key={em} onClick={()=>sendEmote(em)} style={{fontSize:22,border:"none",background:"transparent",cursor:"pointer",padding:4,borderRadius:8}}>{em}</button>)}
             </div>
           )}
@@ -5369,9 +5377,10 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
       setStarted(true);
     } else if(m.type==="state"){
       if(gameOnState.current)gameOnState.current(m.payload);else frameBuf.current=m.payload;
-    } else if(m.type==="play"||m.type==="again"||m.type==="leave"){
+    } else if(m.type==="play"||m.type==="again"||m.type==="leave"||m.type==="rejoin"){
       // v0821.65: "again" is a ready vote and "leave" reports a client quitting after the match
-      if(gameOnPlay.current)gameOnPlay.current((m.type==="again"||m.type==="leave")?{type:m.type,seat:(m.payload&&m.payload.seat)}:m.payload);
+      // v0821.84: "rejoin" from a client that sees itself bot-subbed (was sent since .75 but dropped here → still auto)
+      if(gameOnPlay.current)gameOnPlay.current((m.type==="again"||m.type==="leave"||m.type==="rejoin")?{type:m.type,seat:(m.payload&&m.payload.seat)}:m.payload);
     } else if(meHost&&(m.type==="takeSeat"||m.type==="leaveSeat")){
       mutateSeatAsHost(m.type,m.from,m.payload);
     }
