@@ -1,6 +1,6 @@
 # จับหมู (Jabmoo) — HANDOFF / CONTEXT FILE #8
 > วางไฟล์นี้ใน Project knowledge (แทน jabmoo-handoff_7.md) · Claude อ่านก่อนเสมอ ตอบไทย สั้น ตรง ไม่ชม · แนบ commit message ทุกครั้งที่ส่งไฟล์
-> อัปเดตล่าสุด: **prod v0821.74 / dev v0821.74-dev** (2026-09-19) — **prod = dev ทุกบรรทัด ยกเว้น 6 บรรทัด dev-only** · A push เองผ่าน GitHub Desktop
+> อัปเดตล่าสุด: **prod v0821.77 / dev v0821.77-dev** (2026-09-19) — **prod = dev ทุกบรรทัด ยกเว้น 6 บรรทัด dev-only** · A push เองผ่าน GitHub Desktop
 > ✅ ยืนยันแล้ว: A ได้ไฟล์ .72 ครบ (แชท .71/.72 ตันแต่ไฟล์ออกทัน)
 
 ## 1. โปรเจกต์คืออะไร
@@ -10,8 +10,8 @@
 ## 2. ไฟล์และตำแหน่ง
 | ไฟล์ | เวอร์ชัน | หมายเหตุ |
 |---|---|---|
-| jabmoo.html | **v0821.74** | prod — COIN_ON=true, ~1.52MB |
-| jabmoo-dev.html | **v0821.74-dev** | ต่าง prod **6 บรรทัด**: manifest-dev/icon-dev/ชื่อแอป DEV + `__JM_DEV=true` + VER + COIN_ON gate |
+| jabmoo.html | **v0821.77** | prod — COIN_ON=true, ~1.52MB |
+| jabmoo-dev.html | **v0821.77-dev** | ต่าง prod **6 บรรทัด**: manifest-dev/icon-dev/ชื่อแอป DEV + `__JM_DEV=true` + VER + COIN_ON gate |
 | jabmoo-admin.html | - | PIN=1828 · ลบผู้เล่นผ่าน SQL Editor เท่านั้น |
 - Repo: https://github.com/Anurat-SUV/-Jabmoo (main=deploy Pages) | Live: https://anurat-suv.github.io/-Jabmoo/jabmoo.html
 - **A push ผ่าน GitHub Desktop** (clone ที่ `D:\Work\VsProject\jabmoo-git\-Jabmoo`) — ขั้นตอน: ก๊อปไฟล์ทับ → Commit to main → Push origin
@@ -57,7 +57,8 @@
 - ไพ่ที่ลง: ชิดขอบโต๊ะของแต่ละคน คำนวณจากความสูงบล็อกที่นั่งที่ **วัดจาก DOM จริง** (topSeatRef/botSeatRef)
 - ไพ่ในมือ: **12-13 ใบ → เลข+ดอกมุมซ้ายบน · ≤11 ใบ → กลางใบ** (แก้เคสจอ 360px Samsung S24)
 - ปุ่มเล่น เขียว+ขอบทอง · ปุ่ม 😊 อิโมจิ (12 ตัว) + ปุ่ม 💬 แชตกลม (online เท่านั้น) มุมล่างขวาผ้า
-- **ปุ่ม ⚡ จบเร็ว**: โผล่มุมซ้ายบนเมื่อไพ่แต้มครบ 16 ใบถูกเก็บแล้ว → auto-play + บอทข้าม MC (120ms) + โชว์กอง 0.35s
+- **แผงแชตบนผ้า (.76, portrait)**: แทน drawer ล่าง (โค้ดเก่าปิดด้วย `false&&`) · อยู่ขวาผ้า top=`max(ใต้บล็อกที่นั่งขวา(rightSeatRef), ใต้ไพ่ที่ลงขวา)` bottom=54 (เหนือปุ่ม 💬/😊) left=`max(50%+tW2/2+8, 100%−196px)` ไม่ทับไพ่ตัวเอง · online เท่านั้น · จาง (opacity .55) จนแตะ/โฟกัส input → เต็ม (chatOpen) · blur → จางกลับ · ซ่อนตอน roundSummary · landscape ยัง drawer เดิม · **`CHAT_SOLO` (.77) = `!!window.__JM_DEV` บรรทัดเดียวกันทั้ง 2 ไฟล์ → dev โชว์แผง+ปุ่ม 💬 ใน vs BOT ด้วย (ทดสอบคนเดียว) prod ยัง online เท่านั้น**
+- **ปุ่ม ⚡ จบเร็ว**: โผล่มุมซ้ายบนเมื่อไพ่แต้มครบ 16 ใบถูกเก็บแล้ว → auto-play + บอทข้าม MC (120ms) + โชว์กอง 0.35s · **(.75) effect auto-play นับไพ่แต้มเองทุก render: seen<16 → รีเซ็ต fastFinish** (บั๊ก: กด ⚡ เกม 8 แล้ว host เริ่ม rematch → ที่นั่ง A auto-play ตั้งแต่ตา 1)
 - **นับถอยหลังกลางโต๊ะ (.71 ใหม่)**: `TURN_SHOW=10` — เลขใหญ่โปร่งแสงกลางผ้า ขนาดเท่าไพ่ที่ลง นับ 10→0, **แดง+เต้นเมื่อ ≤3 วิ** · turn timer จริง = **25 วิ** (`setInterval(...,1000)` 1 tick = 1 วิ)
 - **เสียงบี๊บ (.71)**: `playCountBeep` เขียนใหม่ — 2 oscillator detune, gain ~3 เท่าของเดิม (A บอกเดิมเบาเกิน)
 - **จำนวนเกม "N/M" (.72)**: โหมดกำหนดจำนวนเกม แสดง "5/8" แทนเลขเดี่ยว
@@ -84,6 +85,7 @@
 
 ## 8. ออนไลน์
 - transport auto-reconnect / host heartbeat 3s / client resend >2.5s / host หลุด 30s→settle / SEAT TAKEOVER 45s บอทเทพ🤖
+- **AUTO-REJOIN (.75)**: client เห็น frame ที่ `sub[mySeat]=true` ขณะยังต่ออยู่ → ส่ง `rejoin` เอง (throttle 3s) · host รับ `play` จากที่นั่งที่ subbed → un-sub แล้วรับไพ่ (แทนที่จะเมิน) — กันเคสโหวต ready หาย/host กด "เริ่มเลย"
 - **REJOIN (.66)**: `selfId` เก็บใน localStorage `jm_peer_id` · host เก็บ `startPayload` → เห็น hello จาก id ที่ตรงกับที่นั่ง → ส่ง start ใหม่ + `{type:"rejoin",seat}` ปลด subbed คืนที่นั่งกลางเกม
 - **กลับเข้าห้องเดิม (.69)**: `jm_last_room` {room,name,t} → ปุ่ม "↩ กลับเข้าห้องเดิม XXXX" (หมดอายุ 6 ชม.)
 - **REMATCH READY VOTE (.65)**: client กด "พร้อมเล่นอีกรอบ" = โหวต · host เห็น "พร้อม N/M" · host กดเริ่ม → ที่นั่งที่ไม่พร้อมเล่นด้วยบอท
@@ -96,7 +98,7 @@
 ## 10. TODO
 1. **ทดสอบจริง .71-.74**: นับถอยหลัง + เสียงบี๊บบนมือถือจริง · landscape ใหม่ทุกขนาด · **ยืนยัน --sal ว่าไพ่แต้มซ้ายพ้น Dynamic Island จริง (ถ้ายังโดน = เพิ่มค่า fallback)** · หน้าจบเกมแนวนอน
 2. ตัดสินใจ single-file vs `/img/` แยก (~1.52MB)
-3. ทดสอบจริง 2 เครื่อง: online rejoin (.66) + rematch ready (.65) + แชตบับเบิล (.68)
+3. ทดสอบจริง 2 เครื่อง: **rematch หลัง 8 เกมโดยกด ⚡ ในเกมสุดท้าย (.75)** + online rejoin (.66) + rematch ready (.65) + แชตบับเบิล (.68)
 4. วัดผล live ×500: spGamble (.64) ไม่เคย bench · SQL Kob per_match + bot_blowups<−600 · hlak ลอง `{"chars":{"thepjab":{"hlak":0.3}}}`
 5. Bayesian ขยาย · botChar ลง coin_match seats meta · รูปหมูตัวที่ 5 · ลงโทษ host หนี · per-player min online / Elo / Edge Function / สามกอง (project แยก)
 
@@ -119,4 +121,4 @@ A ส่ง log/ภาพ/ไอเดีย → reproduce → แก้ → reg
 - **แชทยาว: พอรู้สึกว่าใกล้ตัน ให้สร้าง handoff ใหม่ทันที อย่ารอจบงาน**
 
 ## 13. ประวัติ .35-.72
-.35-.41 โต๊ะใหม่ (TABLE_BG, 4 ที่นั่ง, ไพ่ชิดขอบ, poster, ไอคอน PWA) | .42 วัดบล็อกที่นั่งจาก DOM | .43-.47 iOS viewport | .46 HoF โพเดียม | .48-.51 สรุปคะแนนกล่องตามที่นั่ง + อิโมจิ 12 + hold 5 วิ | .52-.53 GameOver ไม่ล้นจอ + landing safe-area | .54 corner index + color-scheme dark | .55-.56 (dev only ถอนออก .60) | .57-.59 หมูเจ้าหญิง avatar id3 | .60-.61 corner index ตามจำนวนใบ | .62 ⚡ จบเร็ว | .63 ไพ่แต้มแถวตัวเอง | .64 SPADE HIGH GAMBLE | .65 rematch ready vote | .66 online rejoin + AudioContext เดียว | .67 ชื่อบอทซ้ำเติมเลข | .68 แชตบับเบิล | .69 ปุ่มกลับห้องเดิม | .70 ปุ่มแชตกลม | **.71 countdown กลางโต๊ะ + เสียงบี๊บดังขึ้น** | **.72 ไอคอนหมูแว่น + เกม N/M + landscape รื้อใหม่ธีมเขียว-ทอง** | **.73 header ในเกมใช้ไอคอนแอปจริง** | **.74 landscape safe-area ซ้าย/ขวา (--sal) + หน้าจบเกมแนวนอน**
+.35-.41 โต๊ะใหม่ (TABLE_BG, 4 ที่นั่ง, ไพ่ชิดขอบ, poster, ไอคอน PWA) | .42 วัดบล็อกที่นั่งจาก DOM | .43-.47 iOS viewport | .46 HoF โพเดียม | .48-.51 สรุปคะแนนกล่องตามที่นั่ง + อิโมจิ 12 + hold 5 วิ | .52-.53 GameOver ไม่ล้นจอ + landing safe-area | .54 corner index + color-scheme dark | .55-.56 (dev only ถอนออก .60) | .57-.59 หมูเจ้าหญิง avatar id3 | .60-.61 corner index ตามจำนวนใบ | .62 ⚡ จบเร็ว | .63 ไพ่แต้มแถวตัวเอง | .64 SPADE HIGH GAMBLE | .65 rematch ready vote | .66 online rejoin + AudioContext เดียว | .67 ชื่อบอทซ้ำเติมเลข | .68 แชตบับเบิล | .69 ปุ่มกลับห้องเดิม | .70 ปุ่มแชตกลม | **.71 countdown กลางโต๊ะ + เสียงบี๊บดังขึ้น** | **.72 ไอคอนหมูแว่น + เกม N/M + landscape รื้อใหม่ธีมเขียว-ทอง** | **.73 header ในเกมใช้ไอคอนแอปจริง** | **.74 landscape safe-area ซ้าย/ขวา (--sal) + หน้าจบเกมแนวนอน** | **.75 fastFinish ไม่ค้างข้าม rematch + client auto-rejoin เมื่อถูก sub** | **.76 แผงแชตใสบนผ้า portrait (แทน drawer)** | **.77 CHAT_SOLO: dev เห็นแชตใน vs BOT**
