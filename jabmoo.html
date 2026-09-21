@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.84";
+  var VER="v0821.86";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -1691,6 +1691,32 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
       if(prKM.length)vld=prKM;
     }
   }
+  // ── PIG TOP GUARD + VOID SEED (v0821.86 — A's call, G1 T2 2026-09-20) ──────────────
+  // Holding Q♠ (live by definition). Pure card math, not a human read:
+  // (1) PIG TOP GUARD: never LEAD A♠ (or K♠ once A♠ is gone). If the higher spade(s) fall
+  //     on that lead, Q♠ becomes the top spade left in the suit and can then only be shed
+  //     on a void discard — with 2 low spades of our own we get force-fed in ≤2 more spade
+  //     leads. Rollouts are too shallow to price this (the cost lands 4-8 tricks later).
+  //     Exception: ≥6 spades — running the suit is a real plan.
+  // (2) VOID SEED: a non-spade singleton (not 10♣/J♦) with ≥3 higher cards of its suit
+  //     still live outside our hand is led NOW: we can't win it, and the void it leaves is
+  //     the only exit for Q♠. Leading it a trick later is what lost G1.
+  {const pigLead=(opts&&opts.pigLead!=null)?opts.pigLead:1;
+   if(pigLead&&!tc.length&&vld.length>1&&hand.some(c=>c.suit==="♠"&&c.rank==="Q")){
+    const nSp=hand.filter(c=>c.suit==="♠").length;
+    const seenS=r=>playLog.some(e=>e.card.suit==="♠"&&e.card.rank===r);
+    if(nSp<6){
+      const pr=vld.filter(c=>!(c.suit==="♠"&&(c.rank==="A"||(c.rank==="K"&&(seenS("A")||hand.some(x=>x.suit==="♠"&&x.rank==="A"))))));
+      if(pr.length)vld=pr;
+    }
+    const seeds=vld.filter(c=>{
+      if(c.suit==="♠"||(c.suit==="♣"&&c.rank==="10")||(c.suit==="♦"&&c.rank==="J"))return false;
+      if(hand.filter(x=>x.suit===c.suit).length!==1)return false;
+      const higherLive=RANKS.filter(r=>RO[r]>RO[c.rank]).filter(r=>!playLog.some(e=>e.card.suit===c.suit&&e.card.rank===r)).length;
+      return higherLive>=3;
+    });
+    if(seeds.length)vld=seeds;
+   }}
   // SPADE HIGH GAMBLE (v0821.64 — A's call, G1 T1): following ♠ while Q♠ is still live with
   // someone behind who may hold it, winning with A♠/K♠ is a ~1/3-per-player coin flip that MC
   // (uniform deals, n~150) prices as noise. Not a hard ban: with probability spGamble (default
@@ -3106,6 +3132,15 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const fastRef=useRef(false); fastRef.current=fastFinish;
   const histRef=useRef((!net&&resume&&resume.hist)||[]);
   const gameLogRef=useRef((!net&&resume&&resume.gameLog)||[]); // full move log for export
+  // v0821.85 (A): 📋 copies only the LAST 2 GAMES — the finished game plus whatever has been played
+  // of the one that started right after it (the next deal begins immediately, so "last game only"
+  // would often copy 2 tricks of the new game and lose the one A actually wanted).
+  function recentLog(n=2){
+    const L0=gameLogRef.current; const starts=[];
+    L0.forEach((l,i)=>{if(l.startsWith("=== GAME "))starts.push(i);});
+    if(starts.length<=n)return L0.join("\n");
+    return L0.slice(starts[starts.length-n]).join("\n");
+  }
   const [,fr]=useState(0);
   const rd=()=>fr(x=>x+1);
   const tmr=useRef(null);
@@ -3243,7 +3278,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           const S3=sRef.current;
           if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
           const t0=Date.now();
-          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false,spGamble:bc.spGamble,bayes:bc.bayes?{humans:cfg.players.map(pl=>!pl.isBot)}:false,humans:cfg.players.map(pl=>!pl.isBot),campaign:!!bc.campaign,campQ:bc.campQ,huntP:bc.huntP,slamDef:bc.slamDef||false,hlak:bc.hlak||false});
+          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false,spGamble:bc.spGamble,bayes:bc.bayes?{humans:cfg.players.map(pl=>!pl.isBot)}:false,humans:cfg.players.map(pl=>!pl.isBot),campaign:!!bc.campaign,campQ:bc.campQ,huntP:bc.huntP,slamDef:bc.slamDef||false,hlak:bc.hlak||false,pigLead:(bc.pigLead!=null?bc.pigLead:1)});
           // MIN TURN TIME (v0821.18): the MC budget is a CEILING — forced plays and
           // cheap late tricks finish in milliseconds and looked jarringly fast at
           // x500. Pad the play-back so every turn takes ≥ ~0.68s from schedule;
@@ -3750,7 +3785,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       playApplause();
     }
     const hd=[...histRef.current];
-    return <React.Fragment>{fw&&<Fireworks/>}<GameOver land={orient==="landscape"} players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!(cfg&&cfg.practice)} coinMult={(cfg&&cfg.coinMult)||COIN_MULT} coins={coins} getLog={()=>gameLogRef.current.join("\n")} onHome={onHome} onAgain={()=>{
+    return <React.Fragment>{fw&&<Fireworks/>}<GameOver land={orient==="landscape"} players={pl} totals={S.totals} lang={lang} history={hd} showCoin={COIN_ON&&!(cfg&&cfg.practice)} coinMult={(cfg&&cfg.coinMult)||COIN_MULT} coins={coins} getLog={()=>recentLog()} onHome={onHome} onAgain={()=>{
       if(isClient){setReady(r=>{const n=r.slice();n[mySeat]=true;return n;});net.send("again",{seat:mySeat});return;}
       subbed.current=subbed.current.map((v,i)=>{ // v0821.65: seats that did not vote ready play as bots
         if(i===mySeat||!cfg.players[i]||cfg.players[i].isBot)return v&&i!==mySeat;
@@ -4030,7 +4065,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           </div>
           <button onClick={()=>setShowHist(true)} style={btnS}>📊</button>
           <button onClick={()=>{
-            const txt=gameLogRef.current.join("\n")||"(ยังไม่มีข้อมูล)";
+            const txt=recentLog()||"(ยังไม่มีข้อมูล)";
             navigator.clipboard&&navigator.clipboard.writeText(txt).then(()=>setCopyMsg(true)).catch(()=>setCopyMsg(true));
             setTimeout(()=>setCopyMsg(false),1500);
           }} style={btnS}>📋</button>
@@ -4327,7 +4362,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           </button>}
           <button onClick={()=>setShowHist(true)} style={{fontSize:11,padding:"2px 7px",borderRadius:5,border:"1px solid rgba(212,175,55,0.4)",background:"rgba(255,255,255,0.06)",color:"#d4af37",cursor:"pointer"}}>📊</button>
           <button onClick={()=>{
-            const log=gameLogRef.current.join("\n");
+            const log=recentLog();
             const txt=log||"(ยังไม่มีข้อมูล)";
             if(navigator.clipboard&&navigator.clipboard.writeText){
               navigator.clipboard.writeText(txt).then(()=>setCopyMsg(true)).catch(()=>setCopyMsg(true));
