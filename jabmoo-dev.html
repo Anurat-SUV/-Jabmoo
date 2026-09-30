@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.86-dev";
+  var VER="v0821.87-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -5208,7 +5208,7 @@ async function profSetPig(code,pigId){
 }
 async function profLeaderboard(limit){
   const c=await profClient();
-  const {data,error}=await c.from("players").select("code,name,xp,games,wins,rank_sum,rk_games,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id").not("name","is",null).neq("name","").order("xp",{ascending:false}).limit(limit||100);
+  const {data,error}=await c.from("players").select("code,name,xp,games,wins,rank_sum,rk_games,slams,superslams,jd_won,jd_seen,qs_dodged,qs_seen,pig_id,quits").not("name","is",null).neq("name","").order("xp",{ascending:false}).limit(limit||100);
   if(error)throw new Error(error.message||"query failed"); // surface DB errors — never show an empty hall silently
   return data||[];
 }
@@ -5938,35 +5938,26 @@ function HallOfFame({prof,lang,onBack}){
     return()=>{live=false;};
   },[tab]);
   const medal=["#d4af37","#c0c0c0","#cd7f32"];
-  const podium=rows?rows.slice(0,3):[];
-  const rest=rows?rows.slice(3,20):[];
+  const rest=rows?rows.slice(0,20):[];
   const myRank=rows&&prof?rows.findIndex(r=>r.code===prof.code):-1;
   const SKILL_MIN=30;
   const skillAll=rows?rows.filter(r=>(r.rk_games||0)>=SKILL_MIN).map(r=>Object.assign({},r,{avg:(r.rank_sum||0)/(r.rk_games||1)})).sort((a,b)=>a.avg-b.avg):[];
   const skillRows=skillAll.slice(0,20);
   const mySkillIdx=prof?skillAll.findIndex(r=>r.code===prof.code):-1;
   const star=c=>React.createElement("span",{style:{color:"#f4d47a"}},"★");
-  // v0821.46: one podium for every tab (XP / skill / coin)
-  const Podium=({list,main,sub})=>(
-    <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:6,padding:"10px 0 16px"}}>
-      {[1,0,2].map(slot=>{const p=list[slot];if(!p)return <div key={slot} style={{flex:1}}/>;const big=slot===0;
-        return (
-          <div key={slot} style={{flex:big?1.15:1,textAlign:"center",minWidth:0}}>
-            {big&&<div style={{fontSize:15,color:"#f4d47a"}}>👑</div>}
-            <div style={{width:big?58:46,height:big?58:46,margin:"0 auto 4px",borderRadius:"50%",background:"#12492f",border:"2.5px solid "+medal[slot],display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-              <PigAvatar id={p.pig_id||0} size={big?56:44}/>
-            </div>
-            <div style={{background:big?"#12492f":"#0f3a2b",border:"1.5px solid "+medal[slot],borderRadius:8,padding:"5px 2px"}}>
-              <div style={{fontSize:big?13:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
-              <div style={{fontSize:big?13:12,fontWeight:700,color:"#f4d47a",whiteSpace:"nowrap"}}>{main(p)}</div>
-              {sub&&<div style={{fontSize:8,color:"#7a9b8c",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub(p)}</div>}
-            </div>
-            <div style={{fontSize:10,color:medal[slot],marginTop:3}}>{L?"อันดับ ":"#"}{slot+1}</div>
-          </div>
-        );
-      })}
+  // v0821.87: podium removed (A's call) — one plain vertical list per tab, top-3 rows
+  // slightly emphasized (medal-colored rank badge + border, bigger avatar).
+  const Row=({p,i,main,sub})=>{const top=i<3;const col=top?medal[i]:"#7a9b8c";return (
+    <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:top?"#12492f":"#0f3a2b",border:top?("1.5px solid "+col):"1px solid transparent",borderRadius:top?10:8,padding:top?"8px 10px":"7px 10px",marginBottom:5}}>
+      <span style={{fontSize:12,fontWeight:800,color:top?"#1a2e1a":"#7a9b8c",background:top?col:"transparent",borderRadius:6,minWidth:top?22:18,textAlign:"center",padding:top?"2px 0":0}}>{i+1}</span>
+      <div style={{width:top?32:26,height:top?32:26,borderRadius:"50%",border:top?("1.5px solid "+col):"none",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}><PigAvatar id={p.pig_id||0} size={top?30:26}/></div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:top?13:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{i===0&&"👑 "}{p.name||"—"}</div>
+        {sub&&<div style={{fontSize:9,color:"#7a9b8c",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub(p)}</div>}
+      </div>
+      <span style={{fontSize:top?14:13,fontWeight:800,color:"#f4d47a",whiteSpace:"nowrap"}}>{main(p)}</span>
     </div>
-  );
+  );};
   return (
     <div className="vh100" style={{background:"#08251b",overflowY:"auto",color:"#fff",fontFamily:"sans-serif"}}>
       <div style={{maxWidth:440,margin:"0 auto",padding:"max(env(safe-area-inset-top),var(--sat,0px)) 12px 24px"}}>
@@ -5991,8 +5982,6 @@ function HallOfFame({prof,lang,onBack}){
           <span style={{display:"block",fontSize:10,color:"#7a9b8c",marginTop:4}}>{L?"ถ้าข้อความบอกว่า column ไม่มี → รัน SQL เพิ่มคอลัมน์ pig_id / wins / rank_sum":"If a column is missing, run the ALTER TABLE SQL"}</span>
         </div>}
 
-        {tab==="xp"&&rows&&rows.length>0&&<Podium list={podium} main={p=>"★ "+(p.xp||0).toLocaleString()} sub={p=>"♦️"+pct(p.jd_won,p.jd_seen)+"% ♠️"+pct(p.qs_dodged,p.qs_seen)+"% 🎯"+(p.slams||0)+" ⭐"+(p.superslams||0)}/>}
-
         {tab==="xp"&&rows&&(
           <div style={{margin:"0 0 12px",background:"#0c3323",border:"1px solid #1c5a3f",borderRadius:12,padding:"10px 8px"}}>
             <div style={{textAlign:"center",fontSize:11,color:"#d4af37",letterSpacing:1,marginBottom:8}}>🏆 {L?"ความสำเร็จระดับตำนาน":"Legend achievements"}</div>
@@ -6011,48 +6000,19 @@ function HallOfFame({prof,lang,onBack}){
           </div>
         )}
 
-        {tab==="xp"&&rest.map((p,i)=>(
-          <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:"#0f3a2b",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
-            <span style={{fontSize:12,fontWeight:700,color:"#7a9b8c",width:18}}>{i+4}</span>
-            <PigAvatar id={p.pig_id||0} size={26}/>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
-              <div style={{fontSize:9,color:"#7a9b8c",display:"flex",gap:8,marginTop:1}}>
-                <span>♦️{pct(p.jd_won,p.jd_seen)}%</span>
-                <span>♠️{pct(p.qs_dodged,p.qs_seen)}%</span>
-                <span>🎯{p.slams||0}</span>
-                <span>⭐{p.superslams||0}</span>
-              </div>
-            </div>
-            <span style={{fontSize:12,fontWeight:700,color:"#f4d47a",whiteSpace:"nowrap"}}>★ {(p.xp||0).toLocaleString()}</span>
-          </div>
-        ))}
+        {tab==="xp"&&rest.map((p,i)=><Row key={p.code} p={p} i={i} main={p=>"★ "+(p.xp||0).toLocaleString()} sub={p=>"♦️"+pct(p.jd_won,p.jd_seen)+"% ♠️"+pct(p.qs_dodged,p.qs_seen)+"% 🎯"+(p.slams||0)+" ⭐"+(p.superslams||0)}/>)}
 
         {tab==="skill"&&rows&&(
           <React.Fragment>
             <div style={{textAlign:"center",fontSize:10,color:"#7a9b8c",marginBottom:8}}>{L?("จัดตามอันดับเฉลี่ย · ขั้นต่ำ "+SKILL_MIN+" เกมถึงติดตาราง"):("By average finish · min "+SKILL_MIN+" games")}</div>
             {skillRows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีใครถึงเกณฑ์":"Nobody qualifies yet"}</div>}
-            {skillRows.length>0&&<Podium list={skillRows.slice(0,3)} main={p=>p.avg.toFixed(2)} sub={p=>(L?"ชนะ ":"win ")+pct(p.wins,p.rk_games)+"% · "+p.rk_games+(L?" เกม":" g")}/>}
-            {skillRows.slice(3).map((p,i)=>(
-              <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:"#0f3a2b",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
-                <span style={{fontSize:12,fontWeight:700,color:"#7a9b8c",width:18}}>{i+4}</span>
-                <PigAvatar id={p.pig_id||0} size={26}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
-                  <div style={{fontSize:9,color:"#7a9b8c",marginTop:1}}>{L?"ชนะ":"win"} {pct(p.wins,p.rk_games)}% · {p.rk_games} {L?"เกม":"games"}</div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>{p.avg.toFixed(2)}</div>
-                  <div style={{fontSize:8,color:"#7a9b8c"}}>{L?"อันดับเฉลี่ย":"avg finish"}</div>
-                </div>
-              </div>
-            ))}
+            {skillRows.map((p,i)=><Row key={p.code} p={p} i={i} main={p=>p.avg.toFixed(2)} sub={p=>(L?"ชนะ ":"win ")+pct(p.wins,p.rk_games)+"% · "+p.rk_games+(L?" เกม":" g")+" · 🏃"+(p.quits||0)}/>)}
             {prof&&(
               <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,background:"#12492f",border:"1.5px solid #d4af37",borderRadius:10,padding:"9px 10px"}}>
                 <PigAvatar id={prof.pig_id||0} size={28}/>
                 <div style={{flex:1}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{prof.name||"—"} <span style={{color:"#7a9b8c",fontSize:10}}>({L?"คุณ":"You"})</span></div>
-                  <div style={{fontSize:9,color:"#7a9b8c"}}>{(prof.rk_games||0)>=SKILL_MIN?((L?"ชนะ ":"win ")+pct(prof.wins,prof.rk_games)+"% · "+(mySkillIdx>=0?(L?"อันดับ ":"#")+(mySkillIdx+1):"")):(L?("อีก "+(SKILL_MIN-(prof.rk_games||0))+" เกมถึงเกณฑ์"):((SKILL_MIN-(prof.rk_games||0))+" games to qualify"))}</div>
+                  <div style={{fontSize:9,color:"#7a9b8c"}}>{(prof.rk_games||0)>=SKILL_MIN?((L?"ชนะ ":"win ")+pct(prof.wins,prof.rk_games)+"% · "+(mySkillIdx>=0?(L?"อันดับ ":"#")+(mySkillIdx+1)+" · ":"")+"🏃"+(prof.quits||0)):(L?("อีก "+(SKILL_MIN-(prof.rk_games||0))+" เกมถึงเกณฑ์"):((SKILL_MIN-(prof.rk_games||0))+" games to qualify"))}</div>
                 </div>
                 {(prof.rk_games||0)>=SKILL_MIN&&<span style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>{((prof.rank_sum||0)/(prof.rk_games||1)).toFixed(2)}</span>}
               </div>
@@ -6066,17 +6026,7 @@ function HallOfFame({prof,lang,onBack}){
             {coinErr&&<div style={{textAlign:"center",padding:"1.5rem 12px",color:"#fca5a5",fontSize:11}}>⚠️ {coinErr}</div>}
             {!coinRows&&!coinErr&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"กำลังโหลด...":"Loading..."}</div>}
             {coinRows&&coinRows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีใครมี coin":"Nobody has coins yet"}</div>}
-            {coinRows&&coinRows.length>0&&<Podium list={coinRows.slice(0,3)} main={p=>"💰 "+(p.coins||0).toLocaleString()}/>}
-            {coinRows&&coinRows.slice(3).map((p,i)=>(
-              <div key={p.code} style={{display:"flex",alignItems:"center",gap:8,background:"#0f3a2b",borderRadius:8,padding:"7px 10px",marginBottom:5}}>
-                <span style={{fontSize:12,fontWeight:700,color:"#7a9b8c",width:18}}>{i+4}</span>
-                <PigAvatar id={p.pig_id||0} size={26}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
-                </div>
-                <span style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>💰 {(p.coins||0).toLocaleString()}</span>
-              </div>
-            ))}
+            {coinRows&&coinRows.map((p,i)=><Row key={p.code} p={p} i={i} main={p=>"💰 "+(p.coins||0).toLocaleString()}/>)}
             {prof&&coinRows&&(()=>{const mi=coinRows.findIndex(r=>r.code===prof.code);return (
               <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,background:"#12492f",border:"1.5px solid #d4af37",borderRadius:10,padding:"9px 10px"}}>
                 {mi>=0&&<span style={{fontSize:12,fontWeight:700,color:"#1a2e1a",background:"#d4af37",borderRadius:6,padding:"2px 6px"}}>{mi+1}</span>}
