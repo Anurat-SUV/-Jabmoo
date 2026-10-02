@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.87-dev";
+  var VER="v0821.88-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -274,6 +274,27 @@ function calcSpread(hs){
 // ── DECK ───────────────────────────────────────────────────────
 function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=0|Math.random()*(i+1);[b[i],b[j]]=[b[j],b[i]];}return b;}
 function deal(){for(;;){const d=shuffle(SUITS.flatMap(s=>RANKS.map(r=>({suit:s,rank:r,key:r+s}))));const h=[d.slice(0,13),d.slice(13,26),d.slice(26,39),d.slice(39)];if(h.every(x=>x.some(c=>c.suit==="♥")))return h;}}
+// v0821.88: NO-WIN AUTO (A's call 2026-10-01) — true when seat `me` provably cannot win any
+// remaining trick, so the order it plays its last cards in cannot change its own score.
+// Per suit it still holds: either nobody else holds that suit (it can only ever be discarded),
+// or every card it holds is below every card the others still hold — the cards of the trick
+// in progress count as "still held" so a J♣ behind a 9♣ lead with K♣ out is correctly unsafe.
+// Never true on lead (leading a suit the others are void in wins the trick).
+function cantWinAny(S,me){
+  if(!S||S.phase!=="playing")return false;
+  const hand=S.hands[me]; if(!hand||!hand.length)return false;
+  if(S.curIdx===me&&S.trick.length===0)return false;
+  const seen=new Set(hand.map(c=>c.key));
+  for(const e of S.playLog)seen.add(e.card.key);
+  for(const t of S.trick)seen.delete(t.card.key);
+  for(const s of SUITS){
+    const mine=hand.filter(c=>c.suit===s); if(!mine.length)continue;
+    const myMax=Math.max(...mine.map(c=>RO[c.rank]));
+    let othMin=99; for(const r of RANKS)if(!seen.has(r+s))othMin=Math.min(othMin,RO[r]);
+    if(othMin<99&&myMax>othMin)return false;
+  }
+  return true;
+}
 function getValid(hand,ls,tc){if(!ls||!tc.length)return hand;const f=hand.filter(c=>c.suit===ls);return f.length?f:hand;}
 function trickWin(trick,ls){let b=-1,ix=0;for(let i=0;i<trick.length;i++){const c=trick[i].card;if(c.suit!==ls)continue;const v=RO[c.rank];if(v>b){b=v;ix=i;}}return trick[ix].playerIdx;}
 
@@ -3136,6 +3157,10 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const readyRef=useRef(ready); readyRef.current=ready;
   const [fastFinish,setFastFinish]=useState(false);
   const fastRef=useRef(false); fastRef.current=fastFinish;
+  // v0821.88: NO-WIN AUTO — "L" = play leftmost legal card (as shown: ♠♥♦♣ low→high), "R" = rightmost
+  const [autoDir,setAutoDir]=useState(null);
+  const autoDirRef=useRef(null); autoDirRef.current=autoDir;
+  const autoDirGame=useRef(-1);
   const histRef=useRef((!net&&resume&&resume.hist)||[]);
   const gameLogRef=useRef((!net&&resume&&resume.gameLog)||[]); // full move log for export
   // v0821.85 (A): 📋 copies only the LAST 2 GAMES — the finished game plus whatever has been played
@@ -3329,6 +3354,17 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     return()=>clearTimeout(t);
   });
 
+  // v0821.88: NO-WIN AUTO — auto-play my seat from the chosen end while cantWinAny() holds.
+  // Drops itself on a new deal (gameNum), on any phase change, or the moment the proof fails.
+  useEffect(()=>{
+    if(!autoDir)return;
+    const S=sRef.current; if(!S)return;
+    if(S.phase!=="playing"){ if(S.phase==="roundSummary"||S.gameOver)setAutoDir(null); return; }
+    if(autoDirGame.current!==S.gameNum||!cantWinAny(S,mySeat)){setAutoDir(null);return;}
+    if(S.curIdx!==mySeat||isBotSeat(mySeat))return;
+    const t=setTimeout(()=>{const S2=sRef.current;if(S2&&S2.phase==="playing"&&S2.curIdx===mySeat&&autoDirRef.current)autoPlayTimeout(autoDirRef.current);},350);
+    return()=>clearTimeout(t);
+  });
   // Use a ref to track which phase timer is currently scheduled
   // This prevents re-scheduling on every render
   // Dedicated shuffle effect: fires when gameNum changes
@@ -3724,14 +3760,16 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const [turnLeft,setTurnLeft]=useState(TURN_SECS);
   const turnLeftRef=useRef(TURN_SECS);
   const turnKey=useRef("");
-  function autoPlayTimeout(){
+  function autoPlayTimeout(dir){
     const S=sRef.current;
     if(!S||S.phase!=="playing")return;
     const seat=S.curIdx;
     const ls2=S.trick.length?S.trick[0].card.suit:null;
     const vld=getValid(S.hands[seat],ls2,S.trick);
     if(!vld.length)return;
-    const card=vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+    // v0821.88: dir "L"/"R" = first/last legal card in hand-display order; no dir = lowest rank (timeout / ⚡)
+    const card=dir?(()=>{const so=["♠","♥","♦","♣"];const st=[...vld].sort((a,b)=>{const si=so.indexOf(a.suit)-so.indexOf(b.suit);return si||RO[a.rank]-RO[b.rank];});return dir==="R"?st[st.length-1]:st[0];})()
+      :vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
     if(net&&isClient){pendingPlay.current={cardKey:card.key,ts:Date.now()};net.send("play",{seat,cardKey:card.key});sRef.current={...S,selected:null};rd();}
     else ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
   }
@@ -4149,6 +4187,24 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             })}
           </div>
 
+            {/* v0821.88: NO-WIN AUTO — my remaining cards cannot win a trick; pick which end to shed from */}
+            {(()=>{
+              if(S.phase!=="playing"||S.trickNum>=13)return null;
+              const seen=S.wonCards.reduce((n,w)=>n+w.filter(isSC).length,0)+S.trick.filter(t=>isSC(t.card)).length;
+              if(seen>=16||isBotSeat(mySeat))return null;
+              if(!autoDir&&!cantWinAny(S,mySeat))return null;
+              const bs={padding:"5px 8px",borderRadius:12,border:"1.5px solid #d4af37",background:"linear-gradient(180deg,#1a6b47,#0b3d2e)",color:"#fde68a",fontSize:10,fontWeight:800,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.4)",whiteSpace:"nowrap"};
+              return (
+                <div style={{position:"absolute",top:6,left:"calc(6px + "+SIL+")",zIndex:80,display:"flex",gap:4}}>
+                  {autoDir
+                    ?<button onClick={()=>setAutoDir(null)} style={{...bs,background:"rgba(4,30,20,0.85)"}}>{"⏩ "+(autoDir==="L"?(L?"ซ้าย":"left"):(L?"ขวา":"right"))+" ✕"}</button>
+                    :<React.Fragment>
+                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("L");}} style={bs}>{L?"◀ ลงจากซ้าย":"◀ from left"}</button>
+                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("R");}} style={bs}>{L?"ลงจากขวา ▶":"from right ▶"}</button>
+                    </React.Fragment>}
+                </div>
+              );
+            })()}
           {/* fast-finish (same rule as portrait) */}
           {(()=>{
             if(S.phase!=="playing"||S.trickNum>=13)return null;
@@ -4533,6 +4589,24 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               })}
             </div>
 
+            {/* v0821.88: NO-WIN AUTO — my remaining cards cannot win a trick; pick which end to shed from */}
+            {(()=>{
+              if(S.phase!=="playing"||S.trickNum>=13)return null;
+              const seen=S.wonCards.reduce((n,w)=>n+w.filter(isSC).length,0)+S.trick.filter(t=>isSC(t.card)).length;
+              if(seen>=16||isBotSeat(mySeat))return null;
+              if(!autoDir&&!cantWinAny(S,mySeat))return null;
+              const bs={padding:"6px 9px",borderRadius:12,border:"1.5px solid #d4af37",background:"linear-gradient(180deg,#1a6b47,#0b3d2e)",color:"#fde68a",fontSize:10,fontWeight:800,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.4)",whiteSpace:"nowrap"};
+              return (
+                <div style={{position:"absolute",top:6,left:6,zIndex:80,display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4}}>
+                  {autoDir
+                    ?<button onClick={()=>setAutoDir(null)} style={{...bs,background:"rgba(4,30,20,0.85)"}}>{"⏩ "+(autoDir==="L"?(L?"ซ้าย":"left"):(L?"ขวา":"right"))+" ✕"}</button>
+                    :<React.Fragment>
+                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("L");}} style={bs}>{L?"◀ ลงจากซ้าย":"◀ from left"}</button>
+                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("R");}} style={bs}>{L?"ลงจากขวา ▶":"from right ▶"}</button>
+                    </React.Fragment>}
+                </div>
+              );
+            })()}
             {/* v0821.62: fast-finish button — all scoring cards captured, tricks remain */}
             {(()=>{
               if(S.phase!=="playing"||S.trickNum>=13)return null;
