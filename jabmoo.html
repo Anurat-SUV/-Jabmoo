@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.92";
+  var VER="v0821.93";
   window.__JM_VER=VER;
   function show(msg){
     var d=document.getElementById("jm-err");
@@ -2570,13 +2570,13 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
             )}
             {COIN_ON&&promoOn()&&(
               <div style={{marginBottom:8,padding:"7px 10px",borderRadius:9,border:"1.5px solid #f5c542",background:"linear-gradient(90deg,rgba(245,197,66,0.22),rgba(245,197,66,0.06))",fontSize:11,lineHeight:1.4,color:"#fde68a"}}>
-                <b>🎂 {L?"โปรวันเกิด A":"A's birthday promo"}</b> — {L?"โต๊ะ ×2K เปิดให้เล่นกับบอทได้ ขั้นต่ำลดเหลือ 50,000 ถึง 20 ต.ค. นี้":"×2K open vs BOT, min down to 50,000, until 20 Oct"}
+                <b>🎂 {L?"โปรวันเกิด A":"A's birthday promo"}</b> — {L?"โต๊ะ ×1K และ ×2K เปิดให้เล่นกับบอทได้ ขั้นต่ำ 50,000 ถึง 20 ต.ค. นี้":"×1K and ×2K open vs BOT, min 50,000, until 20 Oct"}
               </div>
             )}
             {COIN_ON&&(
               <div style={{display:"flex",gap:5,justifyContent:"space-between",marginBottom:9,paddingTop:3}}>
                 {COIN_TABLES.map((t,i)=>{
-                  const promo=promoOn()&&t.mult===PROMO.mult; // v0821.90
+                  const promo=promoTbl(t); // v0821.90/.93
                   const locked=!tblBotOK(t)||(tblMin(t)>0&&(coins==null||coins<tblMin(t)));
                   const sel=tblIdx===i&&!locked;
                   return (
@@ -4824,12 +4824,13 @@ function lastTblMult(coins,botOnly){
   }
   return best;
 }
-// v0821.90: BIRTHDAY PROMO (A, 2026-10-06) — ×2000 opens to everyone, vs BOT included, until 20 Oct 2026
-// 23:59 Thai time, min buy-in 50,000 instead of 100,000 (v0821.92). Set `until` to 0 to end early (or bump the date).
-const PROMO={mult:2000,min:50000,until:Date.parse("2026-10-20T23:59:59+07:00")};
+// v0821.90-.93: BIRTHDAY PROMO (A, 2026-10-06) — ×1000 and ×2000 open vs BOT (and online with bots) until
+// 20 Oct 2026 23:59 Thai time; both at min buy-in 50,000. Set `until` to 0 to end early (or bump the date).
+const PROMO={mults:[1000,2000],min:50000,until:Date.parse("2026-10-20T23:59:59+07:00")};
 function promoOn(){return Date.now()<PROMO.until;}
-function tblBotOK(t){return !!t&&(t.bot||(promoOn()&&t.mult===PROMO.mult));} // bot-table gate incl. promo
-function tblMin(t){return (promoOn()&&t.mult===PROMO.mult)?PROMO.min:t.min;}   // effective min buy-in incl. promo
+function promoTbl(t){return !!t&&promoOn()&&PROMO.mults.indexOf(t.mult)>=0;}
+function tblBotOK(t){return !!t&&(t.bot||promoTbl(t));}                 // bot-table gate incl. promo
+function tblMin(t){return promoTbl(t)?Math.min(PROMO.min,t.min):t.min;} // effective min buy-in incl. promo
 const COIN_REFILL=2000; // broke → daily TOP-UP TO this floor (not +flat): the ledger
 // can go negative by design, and a flat +2,000 is smaller than a single bad match
 // (p95 ≈ −2,100) — a deep-negative player would be locked out for days. Topping up
@@ -5656,7 +5657,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
                 </div>
               );})():(
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-              {promoOn()&&<div style={{flex:"1 0 100%",fontSize:10,color:"#fde68a",marginBottom:2}}>🎂 {L?"โปรวันเกิด: ×2K เปิดให้โต๊ะที่มีบอท ขั้นต่ำ 50,000 ถึง 20 ต.ค.":"Birthday promo: ×2K open with bots, min 50,000, until 20 Oct"}</div>}
+              {promoOn()&&<div style={{flex:"1 0 100%",fontSize:10,color:"#fde68a",marginBottom:2}}>🎂 {L?"โปรวันเกิด: ×1K และ ×2K เปิดให้โต๊ะที่มีบอท ขั้นต่ำ 50,000 ถึง 20 ต.ค.":"Birthday promo: ×1K and ×2K open with bots, min 50,000, until 20 Oct"}</div>}
               {COIN_TABLES.map((t,i)=>{
                 const hasBot=seats.some(x=>x.type==="bot");
                 const locked=isHost&&((hasBot&&!tblBotOK(t))||(tblMin(t)>0&&(coins==null||coins<tblMin(t))));
@@ -5670,7 +5671,7 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
                       border:"1.5px solid "+(sel?"#d4af37":"rgba(212,175,55,0.3)"),
                       background:sel?"#d4af37":"rgba(255,255,255,0.06)",
                       color:sel?"#1a2e1a":(locked?"#6b8a7c":"#e6efe9"),opacity:locked?0.6:1}}>
-                    ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!tblBotOK(t)?" 👥":" 🔒"):""}{promoOn()&&t.mult===PROMO.mult?" 🎂":""}
+                    ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!tblBotOK(t)?" 👥":" 🔒"):""}{promoTbl(t)?" 🎂":""}
                     {tblMin(t)>0&&<div style={{fontSize:7,fontWeight:600,opacity:0.8}}>{"min "+fmtCoin(tblMin(t))}</div>}
                   </button>
                 );
