@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.88-dev";
+  var VER="v0821.92-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -274,27 +274,8 @@ function calcSpread(hs){
 // ── DECK ───────────────────────────────────────────────────────
 function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=0|Math.random()*(i+1);[b[i],b[j]]=[b[j],b[i]];}return b;}
 function deal(){for(;;){const d=shuffle(SUITS.flatMap(s=>RANKS.map(r=>({suit:s,rank:r,key:r+s}))));const h=[d.slice(0,13),d.slice(13,26),d.slice(26,39),d.slice(39)];if(h.every(x=>x.some(c=>c.suit==="♥")))return h;}}
-// v0821.88: NO-WIN AUTO (A's call 2026-10-01) — true when seat `me` provably cannot win any
-// remaining trick, so the order it plays its last cards in cannot change its own score.
-// Per suit it still holds: either nobody else holds that suit (it can only ever be discarded),
-// or every card it holds is below every card the others still hold — the cards of the trick
-// in progress count as "still held" so a J♣ behind a 9♣ lead with K♣ out is correctly unsafe.
-// Never true on lead (leading a suit the others are void in wins the trick).
-function cantWinAny(S,me){
-  if(!S||S.phase!=="playing")return false;
-  const hand=S.hands[me]; if(!hand||!hand.length)return false;
-  if(S.curIdx===me&&S.trick.length===0)return false;
-  const seen=new Set(hand.map(c=>c.key));
-  for(const e of S.playLog)seen.add(e.card.key);
-  for(const t of S.trick)seen.delete(t.card.key);
-  for(const s of SUITS){
-    const mine=hand.filter(c=>c.suit===s); if(!mine.length)continue;
-    const myMax=Math.max(...mine.map(c=>RO[c.rank]));
-    let othMin=99; for(const r of RANKS)if(!seen.has(r+s))othMin=Math.min(othMin,RO[r]);
-    if(othMin<99&&myMax>othMin)return false;
-  }
-  return true;
-}
+// v0821.91: cantWinAny (.88/.90) removed — A: players should count cards themselves; knowing early kills the tension.
+function allPointsSeen(S){return S.wonCards.reduce((n,w)=>n+w.filter(isSC).length,0)+S.trick.filter(t=>isSC(t.card)).length>=16;}
 function getValid(hand,ls,tc){if(!ls||!tc.length)return hand;const f=hand.filter(c=>c.suit===ls);return f.length?f:hand;}
 function trickWin(trick,ls){let b=-1,ix=0;for(let i=0;i<trick.length;i++){const c=trick[i].card;if(c.suit!==ls)continue;const v=RO[c.rank];if(v>b){b=v;ix=i;}}return trick[ix].playerIdx;}
 
@@ -2483,7 +2464,7 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
     if(!hasName){onShowCode();return;}
     // validate tier at start (balance may have dropped since selection)
     const tt=(typeof COIN_TABLES!=="undefined"&&COIN_TABLES[tblIdx])||null;
-    const okT=tt&&tt.bot&&(tt.min===0||(coins!=null&&coins>=tt.min))?tt:null;
+    const okT=tt&&tblBotOK(tt)&&(tblMin(tt)===0||(coins!=null&&coins>=tblMin(tt)))?tt:null;
     try{localStorage.setItem("jm_lastTbl",String(okT?okT.mult:100));}catch(e){} // remember for next session
     const _lu=seededShuffle(botLineup(okT?okT.mult:100),(Math.random()*1e9)|0); // character mix per tier, random seats per match
     onStart({
@@ -2525,10 +2506,10 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
                 {(typeof window!=="undefined"&&window.__JM_DEV)&&<button onClick={runFwTest} title="test SUPER SLAM show (dev)" style={{padding:"2px 7px",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,background:"transparent"}}>🎆</button>}
               </div>
               {COIN_ON&&(
-                <div onClick={()=>{if(prof)setShowCoinHist(true);else onShowCode();}} style={{display:"flex",alignItems:"center",gap:5,background:"linear-gradient(180deg,#241203,#3e2413)",border:"2px solid #b4831a",borderRadius:999,padding:"3px 6px 3px 9px",cursor:"pointer",boxShadow:"0 2px 0 #241203"}}>
-                  <span style={{fontSize:13}}>🪙</span>
-                  <span style={{fontSize:14,fontWeight:900,color:"#ffe9a8",fontFamily:"Georgia,serif"}}>{coins!=null?coins.toLocaleString():"..."}</span>
-                  <span style={{width:19,height:19,borderRadius:"50%",background:"radial-gradient(circle at 35% 30%,#9be26b,#3f9e2a)",color:"#fff",display:"grid",placeItems:"center",fontWeight:800,fontSize:13,border:"1.5px solid #2a6e1a"}}>+</span>
+                <div onClick={()=>{if(prof)setShowCoinHist(true);else onShowCode();}} style={{display:"flex",alignItems:"center",gap:6,background:"linear-gradient(180deg,#241203,#3e2413)",border:"2px solid #b4831a",borderRadius:999,padding:"4px 7px 4px 11px",cursor:"pointer",boxShadow:"0 2px 0 #241203"}}>{/* v0821.89: +20% (A) */}
+                  <span style={{fontSize:16}}>🪙</span>
+                  <span style={{fontSize:17,fontWeight:900,color:"#ffe9a8",fontFamily:"Georgia,serif"}}>{coins!=null?coins.toLocaleString():"..."}</span>
+                  <span style={{width:23,height:23,borderRadius:"50%",background:"radial-gradient(circle at 35% 30%,#9be26b,#3f9e2a)",color:"#fff",display:"grid",placeItems:"center",fontWeight:800,fontSize:16,border:"1.5px solid #2a6e1a"}}>+</span>
                 </div>
               )}
             </div>
@@ -2593,22 +2574,29 @@ function Setup({onStart,onOnline,lang,setLang,prof,onRename,onShowCode,onShowHal
                 {coinMsg&&<span style={{color:coinMsg.indexOf("🎉")>=0?"#86efac":"#fca5a5",fontSize:9,marginLeft:"auto",textAlign:"right"}}>{coinMsg}</span>}
               </div>
             )}
+            {COIN_ON&&promoOn()&&(
+              <div style={{marginBottom:8,padding:"7px 10px",borderRadius:9,border:"1.5px solid #f5c542",background:"linear-gradient(90deg,rgba(245,197,66,0.22),rgba(245,197,66,0.06))",fontSize:11,lineHeight:1.4,color:"#fde68a"}}>
+                <b>🎂 {L?"โปรวันเกิด A":"A's birthday promo"}</b> — {L?"โต๊ะ ×2K เปิดให้เล่นกับบอทได้ ขั้นต่ำลดเหลือ 50,000 ถึง 20 ต.ค. นี้":"×2K open vs BOT, min down to 50,000, until 20 Oct"}
+              </div>
+            )}
             {COIN_ON&&(
               <div style={{display:"flex",gap:5,justifyContent:"space-between",marginBottom:9,paddingTop:3}}>
                 {COIN_TABLES.map((t,i)=>{
-                  const locked=!t.bot||(t.min>0&&(coins==null||coins<t.min));
+                  const promo=promoOn()&&t.mult===PROMO.mult; // v0821.90
+                  const locked=!tblBotOK(t)||(tblMin(t)>0&&(coins==null||coins<tblMin(t)));
                   const sel=tblIdx===i&&!locked;
                   return (
                     <button key={i} onClick={()=>{if(!locked){tblTouched.current=true;setTblIdx(i);}}}
-                      title={!t.bot?(L?"โต๊ะคนล้วน":"humans only"):(t.min?("min "+t.min.toLocaleString()):"")}
-                      style={{flex:"0 0 auto",width:44,height:44,borderRadius:"50%",padding:0,fontSize:9.5,fontWeight:800,cursor:locked?"default":"pointer",
+                      title={!tblBotOK(t)?(L?"โต๊ะคนล้วน":"humans only"):promo?(L?"🎂 โปรวันเกิด ถึง 20 ต.ค. — min 50,000":"🎂 birthday promo until 20 Oct — min 50,000"):(tblMin(t)?("min "+tblMin(t).toLocaleString()):"")}
+                      style={{flex:"0 0 auto",width:44,height:44,borderRadius:"50%",padding:0,fontSize:9.5,fontWeight:800,cursor:locked?"default":"pointer",position:"relative",
                         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                         border:"2.5px dashed rgba(255,255,255,0.8)",
                         outline:sel?"2.5px solid #f5c542":"none",outlineOffset:2,
                         background:sel?"radial-gradient(circle,#5f9fe0 30%,#1f5aa0 70%)":(locked?"radial-gradient(circle,#5a5a5a 30%,#333 70%)":"radial-gradient(circle,#6fc06c 30%,#2f7a33 70%)"),
                         color:locked?"#999":"#fff",boxShadow:"0 3px 0 rgba(0,0,0,0.45)"}}>
-                      <span>×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!t.bot?"👥":"🔒"):""}</span>
-                      {t.min>0&&<span style={{fontSize:6.5,fontWeight:600,opacity:0.85}}>{fmtCoin(t.min)}</span>}
+                      <span>×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!tblBotOK(t)?"👥":"🔒"):""}</span>
+                      {promo&&<span style={{position:"absolute",top:-7,right:-6,fontSize:12,lineHeight:1,filter:"drop-shadow(0 1px 2px rgba(0,0,0,.6))"}}>🎂</span>}
+                      {tblMin(t)>0&&<span style={{fontSize:6.5,fontWeight:600,opacity:0.85}}>{fmtCoin(tblMin(t))}</span>}
                     </button>
                   );
                 })}
@@ -3157,10 +3145,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const readyRef=useRef(ready); readyRef.current=ready;
   const [fastFinish,setFastFinish]=useState(false);
   const fastRef=useRef(false); fastRef.current=fastFinish;
-  // v0821.88: NO-WIN AUTO — "L" = play leftmost legal card (as shown: ♠♥♦♣ low→high), "R" = rightmost
-  const [autoDir,setAutoDir]=useState(null);
-  const autoDirRef=useRef(null); autoDirRef.current=autoDir;
-  const autoDirGame=useRef(-1);
+  const fastAll=()=>{const S=sRef.current;return fastRef.current&&!!S&&allPointsSeen(S);};
   const histRef=useRef((!net&&resume&&resume.hist)||[]);
   const gameLogRef=useRef((!net&&resume&&resume.gameLog)||[]); // full move log for export
   // v0821.85 (A): 📋 copies only the LAST 2 GAMES — the finished game plus whatever has been played
@@ -3291,7 +3276,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
       bk.current=k2;
       const lvl=cfg.players[S2.curIdx].isBot?cfg.players[S2.curIdx].botLevel:3; // subbed human → Lv3 MC
       const bc=botChar(cfg.players[S2.curIdx].isBot?cfg.players[S2.curIdx].botChar:"thep"); // takeover subs play at max
-      if(fastRef.current){ // v0821.62: nothing left to fight for — plain heuristic, no MC, no pacing
+      if(fastAll()){ // v0821.62: nothing left to fight for — plain heuristic, no MC, no pacing
         const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
         ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
       } else if(lvl===3&&bc.blur&&Math.random()<bc.blur){
@@ -3335,7 +3320,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         const card=botPlay(S2.hands[S2.curIdx],S2.trick.length?S2.trick[0].card.suit:null,S2.trick,S2.wonCards,S2.totals,S2.curIdx,S2.playLog,S2.voids);
         ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
       }
-    },fastRef.current?120:mb.pace);
+    },fastAll()?120:mb.pace);
     return()=>clearTimeout(tmr.current);
   });
   // v0821.62: fast finish — auto-play my own seat (lowest legal card) and reset when the game ends
@@ -3347,24 +3332,12 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
     // game 8 of an online match, host started the rematch, A's seat kept auto-playing from trick 1.
     // Guard on the actual point-card count (16 seen = the only state ⚡ is valid in) — that resets
     // a stale flag on any new deal, whatever path it arrived by (INIT / rematch / rejoin / resume).
-    {const seen=S.wonCards.reduce((n,w)=>n+w.filter(isSC).length,0)+S.trick.filter(t=>isSC(t.card)).length;
-     if(seen<16){setFastFinish(false);return;}}
+    if(!allPointsSeen(S)){setFastFinish(false);return;}
     if(S.curIdx!==mySeat||isBotSeat(mySeat))return;
     const t=setTimeout(()=>{const S2=sRef.current;if(S2&&S2.phase==="playing"&&S2.curIdx===mySeat)autoPlayTimeout();},150);
     return()=>clearTimeout(t);
   });
 
-  // v0821.88: NO-WIN AUTO — auto-play my seat from the chosen end while cantWinAny() holds.
-  // Drops itself on a new deal (gameNum), on any phase change, or the moment the proof fails.
-  useEffect(()=>{
-    if(!autoDir)return;
-    const S=sRef.current; if(!S)return;
-    if(S.phase!=="playing"){ if(S.phase==="roundSummary"||S.gameOver)setAutoDir(null); return; }
-    if(autoDirGame.current!==S.gameNum||!cantWinAny(S,mySeat)){setAutoDir(null);return;}
-    if(S.curIdx!==mySeat||isBotSeat(mySeat))return;
-    const t=setTimeout(()=>{const S2=sRef.current;if(S2&&S2.phase==="playing"&&S2.curIdx===mySeat&&autoDirRef.current)autoPlayTimeout(autoDirRef.current);},350);
-    return()=>clearTimeout(t);
-  });
   // Use a ref to track which phase timer is currently scheduled
   // This prevents re-scheduling on every render
   // Dedicated shuffle effect: fires when gameNum changes
@@ -3416,7 +3389,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
         scheduledPhase.current="";
         bk.current="";
         ap({type:"CLEAR",endMode:cfg.endMode,threshold:cfg.threshold,numGames:cfg.numGames});
-      },fastRef.current?350:cfg.showSec*1000);
+      },fastAll()?350:cfg.showSec*1000);
     } else if(phase==="roundSummary"){
       scheduledPhase.current="roundSummary";
       if(lastRecordedGame.current!==S.gameNum){
@@ -3760,16 +3733,14 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
   const [turnLeft,setTurnLeft]=useState(TURN_SECS);
   const turnLeftRef=useRef(TURN_SECS);
   const turnKey=useRef("");
-  function autoPlayTimeout(dir){
+  function autoPlayTimeout(){
     const S=sRef.current;
     if(!S||S.phase!=="playing")return;
     const seat=S.curIdx;
     const ls2=S.trick.length?S.trick[0].card.suit:null;
     const vld=getValid(S.hands[seat],ls2,S.trick);
     if(!vld.length)return;
-    // v0821.88: dir "L"/"R" = first/last legal card in hand-display order; no dir = lowest rank (timeout / ⚡)
-    const card=dir?(()=>{const so=["♠","♥","♦","♣"];const st=[...vld].sort((a,b)=>{const si=so.indexOf(a.suit)-so.indexOf(b.suit);return si||RO[a.rank]-RO[b.rank];});return dir==="R"?st[st.length-1]:st[0];})()
-      :vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
+    const card=vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b);
     if(net&&isClient){pendingPlay.current={cardKey:card.key,ts:Date.now()};net.send("play",{seat,cardKey:card.key});sRef.current={...S,selected:null};rd();}
     else ap({type:"PLAY",card,names:cfg.players.map(p=>p.name)});
   }
@@ -4187,24 +4158,6 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
             })}
           </div>
 
-            {/* v0821.88: NO-WIN AUTO — my remaining cards cannot win a trick; pick which end to shed from */}
-            {(()=>{
-              if(S.phase!=="playing"||S.trickNum>=13)return null;
-              const seen=S.wonCards.reduce((n,w)=>n+w.filter(isSC).length,0)+S.trick.filter(t=>isSC(t.card)).length;
-              if(seen>=16||isBotSeat(mySeat))return null;
-              if(!autoDir&&!cantWinAny(S,mySeat))return null;
-              const bs={padding:"5px 8px",borderRadius:12,border:"1.5px solid #d4af37",background:"linear-gradient(180deg,#1a6b47,#0b3d2e)",color:"#fde68a",fontSize:10,fontWeight:800,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.4)",whiteSpace:"nowrap"};
-              return (
-                <div style={{position:"absolute",top:6,left:"calc(6px + "+SIL+")",zIndex:80,display:"flex",gap:4}}>
-                  {autoDir
-                    ?<button onClick={()=>setAutoDir(null)} style={{...bs,background:"rgba(4,30,20,0.85)"}}>{"⏩ "+(autoDir==="L"?(L?"ซ้าย":"left"):(L?"ขวา":"right"))+" ✕"}</button>
-                    :<React.Fragment>
-                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("L");}} style={bs}>{L?"◀ ลงจากซ้าย":"◀ from left"}</button>
-                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("R");}} style={bs}>{L?"ลงจากขวา ▶":"from right ▶"}</button>
-                    </React.Fragment>}
-                </div>
-              );
-            })()}
           {/* fast-finish (same rule as portrait) */}
           {(()=>{
             if(S.phase!=="playing"||S.trickNum>=13)return null;
@@ -4589,24 +4542,6 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
               })}
             </div>
 
-            {/* v0821.88: NO-WIN AUTO — my remaining cards cannot win a trick; pick which end to shed from */}
-            {(()=>{
-              if(S.phase!=="playing"||S.trickNum>=13)return null;
-              const seen=S.wonCards.reduce((n,w)=>n+w.filter(isSC).length,0)+S.trick.filter(t=>isSC(t.card)).length;
-              if(seen>=16||isBotSeat(mySeat))return null;
-              if(!autoDir&&!cantWinAny(S,mySeat))return null;
-              const bs={padding:"6px 9px",borderRadius:12,border:"1.5px solid #d4af37",background:"linear-gradient(180deg,#1a6b47,#0b3d2e)",color:"#fde68a",fontSize:10,fontWeight:800,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.4)",whiteSpace:"nowrap"};
-              return (
-                <div style={{position:"absolute",top:6,left:6,zIndex:80,display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4}}>
-                  {autoDir
-                    ?<button onClick={()=>setAutoDir(null)} style={{...bs,background:"rgba(4,30,20,0.85)"}}>{"⏩ "+(autoDir==="L"?(L?"ซ้าย":"left"):(L?"ขวา":"right"))+" ✕"}</button>
-                    :<React.Fragment>
-                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("L");}} style={bs}>{L?"◀ ลงจากซ้าย":"◀ from left"}</button>
-                      <button onClick={()=>{autoDirGame.current=S.gameNum;setAutoDir("R");}} style={bs}>{L?"ลงจากขวา ▶":"from right ▶"}</button>
-                    </React.Fragment>}
-                </div>
-              );
-            })()}
             {/* v0821.62: fast-finish button — all scoring cards captured, tricks remain */}
             {(()=>{
               if(S.phase!=="playing"||S.trickNum>=13)return null;
@@ -4888,13 +4823,19 @@ function lastTblMult(coins,botOnly){
   let want=100; try{want=parseInt(localStorage.getItem("jm_lastTbl")||"100",10)||100;}catch(e){}
   let best=100;
   for(const t of COIN_TABLES){
-    if(botOnly&&!t.bot)continue;
+    if(botOnly&&!tblBotOK(t))continue;
     if(t.mult>want)continue;
-    if(t.min>0&&(coins==null||coins<t.min))continue;
+    if(tblMin(t)>0&&(coins==null||coins<tblMin(t)))continue;
     if(t.mult>best)best=t.mult;
   }
   return best;
 }
+// v0821.90: BIRTHDAY PROMO (A, 2026-10-06) — ×2000 opens to everyone, vs BOT included, until 20 Oct 2026
+// 23:59 Thai time, min buy-in 50,000 instead of 100,000 (v0821.92). Set `until` to 0 to end early (or bump the date).
+const PROMO={mult:2000,min:50000,until:Date.parse("2026-10-20T23:59:59+07:00")};
+function promoOn(){return Date.now()<PROMO.until;}
+function tblBotOK(t){return !!t&&(t.bot||(promoOn()&&t.mult===PROMO.mult));} // bot-table gate incl. promo
+function tblMin(t){return (promoOn()&&t.mult===PROMO.mult)?PROMO.min:t.min;}   // effective min buy-in incl. promo
 const COIN_REFILL=2000; // broke → daily TOP-UP TO this floor (not +flat): the ledger
 // can go negative by design, and a flat +2,000 is smaller than a single bad match
 // (p95 ≈ −2,100) — a deep-negative player would be locked out for days. Topping up
@@ -5717,25 +5658,26 @@ function OnlineLobby({lang,setLang,onBack,onStartGame,onGameStats,onMatchCoins,c
               return (
                 <div style={{padding:"8px 10px",borderRadius:8,border:"1.5px solid #d4af37",background:"rgba(212,175,55,0.16)",fontSize:13,fontWeight:800,color:"#fde68a",display:"flex",alignItems:"center",gap:8}}>
                   <span>🪙 ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}</span>
-                  {t.min>0&&<span style={{fontSize:10,fontWeight:600,color:"#fbbf24"}}>min {fmtCoin(t.min)}</span>}
+                  {tblMin(t)>0&&<span style={{fontSize:10,fontWeight:600,color:"#fbbf24"}}>min {fmtCoin(tblMin(t))}</span>}
                 </div>
               );})():(
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              {promoOn()&&<div style={{flex:"1 0 100%",fontSize:10,color:"#fde68a",marginBottom:2}}>🎂 {L?"โปรวันเกิด: ×2K เปิดให้โต๊ะที่มีบอท ขั้นต่ำ 50,000 ถึง 20 ต.ค.":"Birthday promo: ×2K open with bots, min 50,000, until 20 Oct"}</div>}
               {COIN_TABLES.map((t,i)=>{
                 const hasBot=seats.some(x=>x.type==="bot");
-                const locked=isHost&&((hasBot&&!t.bot)||(t.min>0&&(coins==null||coins<t.min)));
+                const locked=isHost&&((hasBot&&!tblBotOK(t))||(tblMin(t)>0&&(coins==null||coins<tblMin(t))));
                 const sel=tableMult===t.mult;
                 return (
                   <button key={i} disabled={!isHost||locked}
                     onClick={()=>{if(!isHost||locked)return;setTableMult(t.mult);ref.current.tableMult=t.mult;broadcastRoomState(ref.current.seats,ref.current.members,t.mult);}}
-                    title={!t.bot?(L?"โต๊ะคนล้วน":"humans only"):(t.min?("min "+t.min.toLocaleString()):"")}
+                    title={!tblBotOK(t)?(L?"โต๊ะคนล้วน":"humans only"):(tblMin(t)?("min "+tblMin(t).toLocaleString()):"")}
                     style={{flex:"1 0 22%",padding:"4px 2px",borderRadius:7,fontSize:10,fontWeight:800,
                       cursor:(isHost&&!locked)?"pointer":"default",
                       border:"1.5px solid "+(sel?"#d4af37":"rgba(212,175,55,0.3)"),
                       background:sel?"#d4af37":"rgba(255,255,255,0.06)",
                       color:sel?"#1a2e1a":(locked?"#6b8a7c":"#e6efe9"),opacity:locked?0.6:1}}>
-                    ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!t.bot?" 👥":" 🔒"):""}
-                    {t.min>0&&<div style={{fontSize:7,fontWeight:600,opacity:0.8}}>{"min "+fmtCoin(t.min)}</div>}
+                    ×{t.mult>=1000?(t.mult/1000)+"K":t.mult}{locked?(!tblBotOK(t)?" 👥":" 🔒"):""}{promoOn()&&t.mult===PROMO.mult?" 🎂":""}
+                    {tblMin(t)>0&&<div style={{fontSize:7,fontWeight:600,opacity:0.8}}>{"min "+fmtCoin(tblMin(t))}</div>}
                   </button>
                 );
               })}
