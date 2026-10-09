@@ -61,7 +61,7 @@ input::placeholder{color:#9ca3af;opacity:1;}
 <div id="root"></div>
 <script>
 (function(){
-  var VER="v0821.93-dev";
+  var VER="v0821.95-dev";
   window.__JM_DEV=true;
   window.__JM_VER=VER;
   function show(msg){
@@ -1102,7 +1102,12 @@ function botPlay(hand,ls,tc,allWon,totals,myIdx,playLog,voids){
     const trickHasQS=tc.some(t=>t.card.suit==="♠"&&t.card.rank==="Q");
     const trickHasBigHeart=tc.some(t=>t.card.suit==="♥"&&RO[t.card.rank]>10);
     const trickSafe=!trickHasQS&&!trickHasBigHeart&&!tc.some(t=>t.card.suit==="♥");
-    if(inSuit.length&&trickSafe){
+    // v0821.95 SLAM KEEP (A, 2026-10-09): under a slam threat the high non-♥ cards are the
+    // DEFENDERS' weapons (the only way to take a heart-carrying trick away from the slammer /
+    // deny him uncontested suit control). Shedding A♣ on a clean trick handed A's K♣ the suit.
+    // Keep A/K of any suit the suspect still follows; shed as before once he is void in it.
+    const slamKeepH=SLAM_KEEP_H&&slamThreat&&!(voids[slammerIdx]&&voids[slammerIdx][ls]);
+    if(inSuit.length&&trickSafe&&!slamKeepH){
       // ♣: shed A♣/K♣ (no penalty in clubs except 10♣ which isn't here)
       if(ls==="♣"){
         const ac=inSuit.find(c=>c.rank==="A");if(ac)return ac;
@@ -1503,8 +1508,14 @@ function slamRisk(allWon,playLog,tc,voids,myIdx,humans){
   if(owners===0){                                 // nothing captured yet — tells only
     let cand=leadTell;
     if(cand<0)for(let p=0;p<4;p++)if(logTell[p]&&p!==myIdx)cand=p;
-    if(cand<0||cand===myIdx)return null;
+    // v0821.95 EARLY-HOARD TELL (A, 2026-10-09): one seat has won EVERY trick so far (≥3) and not a
+    // single heart has shown — the would-be slammer taking control before anyone reads him. The
+    // bench showed defenders spending A♣/K♣ on clean tricks in T1-4 while risk still read null, so
+    // SLAM KEEP never got to fire. Base 0.35 (+0.2 all-wins below) = 0.55 → just over the gate.
     let r=0.6;
+    if(cand<0&&nT>=3){let h0=0;playLog.forEach(e=>{if(e.card.suit==="♥")h0++;});
+      if(SLAM_TELL_EARLY&&h0===0)for(let p=0;p<4;p++)if(p!==myIdx&&wins[p]===nT){cand=p;r=0.35;}}
+    if(cand<0||cand===myIdx)return null;
     if(nT>=2&&wins[cand]===nT)r+=0.2;             // has won every trick so far
     return {seat:cand,r:Math.min(1,r)};
   }
@@ -1609,12 +1620,19 @@ function mcDeal(unseen,counts,voids,qsW,hW){
 const CAMP_DEFAULT=true;   // SPADE CAMPAIGN (posterior-gated)
 const SLAM_DEFAULT=true;   // SLAM DEFENSE package
 const HLAK_DEFAULT=false;   // หลัก-aware objective
+// v0821.95 SLAM KEEP package — OFF by default: self-play bench n=100 −7.3±7.5 (noise/slightly −) and the
+// scripted-slammer bench showed no drop in slam rate (29% both ways) — the A♣/K♣ sheds mostly happen before
+// any risk read fires. Kept in the code for A to flip on remotely: {"chars":{"thepjab":{"slamKeep":true}}}
+// (MC prune) — the heuristic/tell halves are the two consts below.
+const SLAM_KEEP_H=false;    // heuristic: keep A/K on clean last-position tricks while a slam threat is live
+const SLAM_TELL_EARLY=false;// slamRisk: EARLY-HOARD TELL (one seat won every trick ≥3, no heart out yet)
+// v0821.95: tcP = 10♣ PATIENCE temperament weights [rush, wait, suspect] (rolled once per game)
 const BOT_CHARS={
-  dang:{name:"หมูเด้ง",dealsX:0.5 ,blur:0.35,hunt:false,antiLast:false}, // มือใหม่
-  tod :{name:"หมูทอด",dealsX:0.75,blur:0.15,hunt:false,antiLast:false}, // กลาง
-  pa  :{name:"หมูป่า",dealsX:1.0 ,blur:0.05,hunt:true ,antiLast:false,blowGuard:true}, // ดุ
-  thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false,blowGuard:true,campaign:false,huntP:0.5}, // campaign ไม่ผ่าน bench v0821.32 (-17/เกม n=134) — เปิดทดลองได้ทาง remote config  // (ตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
-  thepjab:{name:"เทพจับหมู",dealsX:1.5,blur:0,hunt:true,antiLast:false,blowGuard:true,bayes:true,campaign:CAMP_DEFAULT,campQ:0.5,slamDef:SLAM_DEFAULT,hlak:HLAK_DEFAULT} // BOSS (v0821.31) · v0821.33: campaign gated by Q♠ posterior (campQ), SLAM DEFENSE, หลัก-aware objective — defaults set by bench, all remote-overridable: ทุกอาวุธของหมูเทพ + deals 900 + Bayesian Q♠ read — ตัวเดียวที่จะรับอาวุธใหม่ต่อจากนี้ หมูเทพ freeze ไว้เทียบ
+  dang:{name:"หมูเด้ง",dealsX:0.5 ,blur:0.35,hunt:false,antiLast:false,tcP:[0.8,0.15,0.05]}, // มือใหม่
+  tod :{name:"หมูทอด",dealsX:0.75,blur:0.15,hunt:false,antiLast:false,tcP:[0.8,0.15,0.05]}, // กลาง
+  pa  :{name:"หมูป่า",dealsX:1.0 ,blur:0.05,hunt:true ,antiLast:false,blowGuard:true,tcP:[0.5,0.3,0.2]}, // ดุ
+  thep:{name:"หมูเทพ",dealsX:1.2 ,blur:0   ,hunt:true ,antiLast:false,blowGuard:true,campaign:false,huntP:0.5,tcP:[0.35,0.35,0.3]}, // campaign ไม่ผ่าน bench v0821.32 (-17/เกม n=134) — เปิดทดลองได้ทาง remote config  // (ตัวแทน SEAT TAKEOVER) — antiLast ไม่ผ่าน bench (v0821.17): เปิดได้ทาง remote config เท่านั้น
+  thepjab:{name:"เทพจับหมู",dealsX:1.5,blur:0,hunt:true,antiLast:false,blowGuard:true,bayes:true,campaign:CAMP_DEFAULT,campQ:0.5,slamDef:SLAM_DEFAULT,hlak:HLAK_DEFAULT,tcP:[0.25,0.35,0.4],slamKeep:false} // BOSS (v0821.31) · v0821.33: campaign gated by Q♠ posterior (campQ), SLAM DEFENSE, หลัก-aware objective — defaults set by bench, all remote-overridable: ทุกอาวุธของหมูเทพ + deals 900 + Bayesian Q♠ read — ตัวเดียวที่จะรับอาวุธใหม่ต่อจากนี้ หมูเทพ freeze ไว้เทียบ
 };
 const BOT_LINEUP={100:["dang","tod","dang"],200:["tod","pa","tod"],500:["pa","thep","thepjab"]}; // v0821.31: x500 = ป่า+เทพ+เทพจับหมู (บันไดความโหด + วัดผลราย tier ได้)
 let BOT_REMOTE=null; // merged over defaults once loadBotConfig() resolves
@@ -1742,6 +1760,41 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
       }
     }
   }
+  // ── 10♣ PATIENCE (v0821.95 — A, 2026-10-09: "10♣ ออกกองแรกทุกที จับทางได้") ──────────────
+  // Self-play showed the ×2 leaves a bot's hand on the 1st/2nd club trick 61% of the time: MC
+  // sheds it the moment it is "safe" (a higher club already in the trick), no target needed.
+  // Humans exploit that: lead a low club to flush it, or never go above 10 early. Fix = a
+  // per-game sticky temperament (hash of match totals + seat, like huntP) so the table can't
+  // predict it:  rush    — as before;
+  //              wait    — shed only onto a wounded winner (round pile ≤ −50, or ≤ −150 on
+  //                        match) or when at risk of eating it ourselves (≤2 escape clubs,
+  //                        ≥7 clubs gone, own round pile ≤ −100);
+  //              suspect — "wait" + remember who LED a sub-10 club in the first club trick
+  //                        (the flusher, likely holding Q♠/big hearts): hold the ×2 for HIM
+  //                        while he still follows clubs, unless we are at risk.
+  // opts.tcP = [rush, wait, suspect] weights (remote knob per character).
+  {const tcP=opts&&opts.tcP;
+   const tenC=vld.find(c=>c.suit==="♣"&&c.rank==="10");
+   if(tcP&&tenC&&vld.length>1&&tc.length){
+     let h=(myIdx+11)|0;for(let p=0;p<4;p++){h=(Math.imul(h,31)+((totals[p]|0)+7919))|0;}h^=h>>>13;h=Math.imul(h,0x27d4eb2f);h^=h>>>15;
+     const u=((h>>>0)%1000)/1000,w0=tcP[0]||0,w1=tcP[1]||0,w2=tcP[2]||0,ws=(w0+w1+w2)||1;
+     const mode=u<w0/ws?0:u<(w0+w1)/ws?1:2;
+     if(mode>0){
+       let cw=-1,cv=-1;for(const t of tc){if(t.card.suit===ls&&RO[t.card.rank]>cv){cv=RO[t.card.rank];cw=t.playerIdx;}}
+       const pile=p=>(allWon&&allWon[p]?allWon[p]:[]).reduce((t,c)=>t+Math.min(0,cSc(c)),0);
+       const target=cw>=0&&cw!==myIdx&&(pile(cw)<=-50||(totals[cw]||0)<=-150);
+       const escape=hand.filter(c=>c.suit==="♣"&&c.rank!=="10").length;
+       let cg=0;playLog.forEach(e=>{if(e.card.suit==="♣")cg++;});
+       const risk=escape<=2||cg>=7||pile(myIdx)<=-100;
+       let hold=!target&&!risk;
+       if(!hold&&mode===2&&!risk){
+         const nT=(playLog.length/4)|0;let sus=-1;
+         for(let t=0;t<nT;t++){const e=playLog[t*4];if(e.card.suit==="♣"){if(RO[e.card.rank]<10&&e.pi!==myIdx)sus=e.pi;break;}}
+         if(sus>=0&&sus!==cw&&!(voids[sus]&&voids[sus]["♣"]))hold=true; // the flusher is still reachable — save it for him
+       }
+       if(hold){const pr=vld.filter(c=>c.key!==tenC.key);if(pr.length)vld=pr;}
+     }
+   }}
   // HARD RULE: a loss-holder (pen ≤ −100 piled) never LEADS 10♣ — ducking opponents
   // send the ×2 straight back to double the damage.
   // WOUNDED HIGH-CLUB LEAD BAN (MC, v0815.8 — A's call, G2 T2): same loss-holder also
@@ -1942,6 +1995,25 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
   if(slamOn&&ls==="♥"&&tc.length&&vld.length>1&&vld.every(c=>c.suit==="♥")){
     const topH=Math.max(...tc.filter(t=>t.card.suit==="♥").map(t=>RO[t.card.rank]));
     if(trickWin(tc,ls)===sr.seat&&!vld.some(c=>RO[c.rank]>topH))vld=[vld.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b)];
+  }
+  // SLAM KEEP (v0821.95 — A, 2026-10-09): following a non-♥ suit under live risk while the
+  // suspect still follows it → never spend A/K on a CLEAN trick when a lower card exists; they
+  // are the stoppers (G: bot shed A♣ early, A's K♣ became boss and ran the suit). The moment the
+  // trick carries a heart — or, while 788 is still possible, a special card the suspect is about
+  // to win — the opposite: if we can take it, take it with the cheapest winner (slam broken).
+  if(slamOn&&opts.slamKeep&&ls&&ls!=="♥"&&tc.length&&vld.length>1&&vld.every(c=>c.suit===ls)){
+    const topL=Math.max(...tc.filter(t=>t.card.suit===ls).map(t=>RO[t.card.rank]));
+    const hasHeart=tc.some(t=>t.card.suit==="♥");
+    const superLive=!allWon.some((w,p)=>p!==sr.seat&&w.some(c=>c.suit!=="♥"));
+    const special=tc.some(t=>t.card.key==="Q♠"||t.card.key==="J♦"||t.card.key==="10♣");
+    const breakIt=hasHeart||(superLive&&special&&trickWin(tc,ls)===sr.seat);
+    const winners=vld.filter(c=>RO[c.rank]>topL);
+    if(breakIt){
+      if(winners.length)vld=[winners.reduce((a,b)=>RO[a.rank]<RO[b.rank]?a:b)];
+    }else if(!(voids[sr.seat]&&voids[sr.seat][ls])){
+      const keep=vld.filter(c=>!(c.rank==="A"||c.rank==="K"));
+      if(keep.length)vld=keep;
+    }
   }
   if(vld.length===1)return vld[0];
   budgetMs=budgetMs||700;
@@ -3294,7 +3366,7 @@ function Game({cfg,lang,setLang,net,onExit,onGameStats,onHome,resume,onMatchCoin
           const S3=sRef.current;
           if(!S3||S3.phase!=="playing"||S3.curIdx!==S2.curIdx){setAiThinking(false);return;}
           const t0=Date.now();
-          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false,spGamble:bc.spGamble,bayes:bc.bayes?{humans:cfg.players.map(pl=>!pl.isBot)}:false,humans:cfg.players.map(pl=>!pl.isBot),campaign:!!bc.campaign,campQ:bc.campQ,huntP:bc.huntP,slamDef:bc.slamDef||false,hlak:bc.hlak||false,pigLead:(bc.pigLead!=null?bc.pigLead:1)});
+          const card=botPlayMC(S3.hands[S3.curIdx],S3.trick.length?S3.trick[0].card.suit:null,S3.trick,S3.wonCards,S3.totals,S3.curIdx,S3.playLog,S3.voids,mb.ms,Math.max(30,Math.round(mb.deals*(bc.dealsX||1))),{hunt:!!bc.hunt,antiLast:!!bc.antiLast,blowGuard:bc.blowGuard||false,spGamble:bc.spGamble,bayes:bc.bayes?{humans:cfg.players.map(pl=>!pl.isBot)}:false,humans:cfg.players.map(pl=>!pl.isBot),campaign:!!bc.campaign,campQ:bc.campQ,huntP:bc.huntP,slamDef:bc.slamDef||false,hlak:bc.hlak||false,pigLead:(bc.pigLead!=null?bc.pigLead:1),tcP:bc.tcP||null,slamKeep:!!bc.slamKeep});
           // MIN TURN TIME (v0821.18): the MC budget is a CEILING — forced plays and
           // cheap late tricks finish in milliseconds and looked jarringly fast at
           // x500. Pad the play-back so every turn takes ≥ ~0.68s from schedule;
@@ -5741,6 +5813,23 @@ function RulesModal({lang,onClose}){
   return (
     <JmModal title="📖 กติกา & คะแนนไพ่" sub="จับหมู (กงจู๊แบบไทย) — เก็บให้น้อย หนีให้เก่ง" onClose={onClose} pad={0}>
       <img src={RULES_IMG} alt="กติกา & คะแนนไพ่" draggable={false} style={{width:"100%",display:"block"}}/>
+      {/* v0821.94: legend achievements moved here from Hall of Fame (A) */}
+      {(()=>{const L=lang!=="en";return (
+        <div style={{margin:"10px 12px 14px",background:"#0c3323",border:"1px solid #1c5a3f",borderRadius:12,padding:"10px 8px"}}>
+          <div style={{textAlign:"center",fontSize:11,color:"#d4af37",letterSpacing:1,marginBottom:8}}>🏆 {L?"ความสำเร็จระดับตำนาน":"Legend achievements"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7}}>
+            {[["👑",L?"เก็บ J♦":"J♦ Master",L?"1,000 ครั้ง":"1,000 times"],
+              ["♠️",L?"หนี Q♠":"Queen Hunter",L?"500 ครั้ง":"500 times"],
+              ["🎯",L?"สแลม":"Shoot the Moon",L?"100 ครั้ง":"100 times"],
+              ["🏆",L?"ตำนานหมู":"Pig Legend",L?"เล่น 10,000 เกม":"10,000 games"]].map((a,i)=>(
+              <div key={i} style={{textAlign:"center",background:"#0f3a2b",borderRadius:8,padding:"6px 3px"}}>
+                <div style={{fontSize:17}}>{a[0]}</div>
+                <div style={{fontSize:9,color:"#f4d47a",fontWeight:700,marginTop:2}}>{a[1]}</div>
+                <div style={{fontSize:8,color:"#7a9b8c"}}>{a[2]}</div>
+              </div>
+            ))}
+          </div>
+        </div>);})()}
     </JmModal>
   );
 }
@@ -5956,11 +6045,9 @@ function HallOfFame({prof,lang,onBack}){
   },[tab]);
   const medal=["#d4af37","#c0c0c0","#cd7f32"];
   const rest=rows?rows.slice(0,20):[];
-  const myRank=rows&&prof?rows.findIndex(r=>r.code===prof.code):-1;
   const SKILL_MIN=30;
   const skillAll=rows?rows.filter(r=>(r.rk_games||0)>=SKILL_MIN).map(r=>Object.assign({},r,{avg:(r.rank_sum||0)/(r.rk_games||1)})).sort((a,b)=>a.avg-b.avg):[];
   const skillRows=skillAll.slice(0,20);
-  const mySkillIdx=prof?skillAll.findIndex(r=>r.code===prof.code):-1;
   const star=c=>React.createElement("span",{style:{color:"#f4d47a"}},"★");
   // v0821.87: podium removed (A's call) — one plain vertical list per tab, top-3 rows
   // slightly emphasized (medal-colored rank badge + border, bigger avatar).
@@ -5999,24 +6086,6 @@ function HallOfFame({prof,lang,onBack}){
           <span style={{display:"block",fontSize:10,color:"#7a9b8c",marginTop:4}}>{L?"ถ้าข้อความบอกว่า column ไม่มี → รัน SQL เพิ่มคอลัมน์ pig_id / wins / rank_sum":"If a column is missing, run the ALTER TABLE SQL"}</span>
         </div>}
 
-        {tab==="xp"&&rows&&(
-          <div style={{margin:"0 0 12px",background:"#0c3323",border:"1px solid #1c5a3f",borderRadius:12,padding:"10px 8px"}}>
-            <div style={{textAlign:"center",fontSize:11,color:"#d4af37",letterSpacing:1,marginBottom:8}}>🏆 {L?"ความสำเร็จระดับตำนาน":"Legend achievements"}</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7}}>
-              {[["👑",L?"เก็บ J♦":"J♦ Master",L?"1,000 ครั้ง":"1,000 times"],
-                ["♠️",L?"หนี Q♠":"Queen Hunter",L?"500 ครั้ง":"500 times"],
-                ["🎯",L?"สแลม":"Shoot the Moon",L?"100 ครั้ง":"100 times"],
-                ["🏆",L?"ตำนานหมู":"Pig Legend",L?"เล่น 10,000 เกม":"10,000 games"]].map((a,i)=>(
-                <div key={i} style={{textAlign:"center",background:"#0f3a2b",borderRadius:8,padding:"6px 3px"}}>
-                  <div style={{fontSize:17}}>{a[0]}</div>
-                  <div style={{fontSize:9,color:"#f4d47a",fontWeight:700,marginTop:2}}>{a[1]}</div>
-                  <div style={{fontSize:8,color:"#7a9b8c"}}>{a[2]}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {tab==="xp"&&rest.map((p,i)=><Row key={p.code} p={p} i={i} main={p=>"★ "+(p.xp||0).toLocaleString()} sub={p=>"♦️"+pct(p.jd_won,p.jd_seen)+"% ♠️"+pct(p.qs_dodged,p.qs_seen)+"% 🎯"+(p.slams||0)+" ⭐"+(p.superslams||0)}/>)}
 
         {tab==="skill"&&rows&&(
@@ -6024,16 +6093,6 @@ function HallOfFame({prof,lang,onBack}){
             <div style={{textAlign:"center",fontSize:10,color:"#7a9b8c",marginBottom:8}}>{L?("จัดตามอันดับเฉลี่ย · ขั้นต่ำ "+SKILL_MIN+" เกมถึงติดตาราง"):("By average finish · min "+SKILL_MIN+" games")}</div>
             {skillRows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีใครถึงเกณฑ์":"Nobody qualifies yet"}</div>}
             {skillRows.map((p,i)=><Row key={p.code} p={p} i={i} main={p=>p.avg.toFixed(2)} sub={p=>(L?"ชนะ ":"win ")+pct(p.wins,p.rk_games)+"% · "+p.rk_games+(L?" เกม":" g")+" · 🏃"+(p.quits||0)}/>)}
-            {prof&&(
-              <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,background:"#12492f",border:"1.5px solid #d4af37",borderRadius:10,padding:"9px 10px"}}>
-                <PigAvatar id={prof.pig_id||0} size={28}/>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{prof.name||"—"} <span style={{color:"#7a9b8c",fontSize:10}}>({L?"คุณ":"You"})</span></div>
-                  <div style={{fontSize:9,color:"#7a9b8c"}}>{(prof.rk_games||0)>=SKILL_MIN?((L?"ชนะ ":"win ")+pct(prof.wins,prof.rk_games)+"% · "+(mySkillIdx>=0?(L?"อันดับ ":"#")+(mySkillIdx+1)+" · ":"")+"🏃"+(prof.quits||0)):(L?("อีก "+(SKILL_MIN-(prof.rk_games||0))+" เกมถึงเกณฑ์"):((SKILL_MIN-(prof.rk_games||0))+" games to qualify"))}</div>
-                </div>
-                {(prof.rk_games||0)>=SKILL_MIN&&<span style={{fontSize:14,fontWeight:800,color:"#f4d47a"}}>{((prof.rank_sum||0)/(prof.rk_games||1)).toFixed(2)}</span>}
-              </div>
-            )}
           </React.Fragment>
         )}
 
@@ -6044,13 +6103,6 @@ function HallOfFame({prof,lang,onBack}){
             {!coinRows&&!coinErr&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"กำลังโหลด...":"Loading..."}</div>}
             {coinRows&&coinRows.length===0&&<div style={{textAlign:"center",padding:"2rem 0",color:"#7a9b8c",fontSize:12}}>{L?"ยังไม่มีใครมี coin":"Nobody has coins yet"}</div>}
             {coinRows&&coinRows.map((p,i)=><Row key={p.code} p={p} i={i} main={p=>"💰 "+(p.coins||0).toLocaleString()}/>)}
-            {prof&&coinRows&&(()=>{const mi=coinRows.findIndex(r=>r.code===prof.code);return (
-              <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,background:"#12492f",border:"1.5px solid #d4af37",borderRadius:10,padding:"9px 10px"}}>
-                {mi>=0&&<span style={{fontSize:12,fontWeight:700,color:"#1a2e1a",background:"#d4af37",borderRadius:6,padding:"2px 6px"}}>{mi+1}</span>}
-                <PigAvatar id={prof.pig_id||0} size={28}/>
-                <div style={{flex:1}}><div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{prof.name||"—"} <span style={{color:"#7a9b8c",fontSize:10}}>({L?"คุณ":"You"})</span></div></div>
-                <span style={{fontSize:13,fontWeight:800,color:"#f4d47a"}}>💰 {(coinRows.find(r=>r.code===prof.code)||{coins:0}).coins==null?0:((coinRows.find(r=>r.code===prof.code)||{coins:0}).coins||0).toLocaleString()}</span>
-              </div>);})()}
             {(typeof window!=="undefined"&&window.__JM_DEV)&&sysBal&&(sysBal.house!=null||sysBal.bot!=null)&&( /* v0821.21: HOUSE/BOT line is ops info — dev only, hidden from players */
               <div style={{marginTop:10,textAlign:"center",fontSize:10,color:"#7a9b8c"}}>
                 🏦 HOUSE ({L?"ต๋งสะสม":"rake"}): {(sysBal.house||0).toLocaleString()} · 🤖 BOT ({L?"สุทธิ":"net"}): {(sysBal.bot||0).toLocaleString()}
@@ -6059,17 +6111,6 @@ function HallOfFame({prof,lang,onBack}){
           </React.Fragment>
         )}
 
-        {tab==="xp"&&prof&&myRank>=0&&(
-          <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,background:"#12492f",border:"1.5px solid #d4af37",borderRadius:10,padding:"9px 10px"}}>
-            <span style={{fontSize:12,fontWeight:700,color:"#1a2e1a",background:"#d4af37",borderRadius:6,padding:"2px 6px"}}>{myRank+1}</span>
-            <PigAvatar id={prof.pig_id||0} size={28}/>
-            <div style={{flex:1}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{prof.name||"—"} <span style={{color:"#7a9b8c",fontSize:10}}>({L?"คุณ":"You"})</span></div>
-              <div style={{fontSize:9,color:"#7a9b8c"}}>{levelInfo(prof.xp||0).name}</div>
-            </div>
-            <span style={{fontSize:13,fontWeight:700,color:"#f4d47a"}}>★ {(prof.xp||0).toLocaleString()}</span>
-          </div>
-        )}
       </div>
     </div>
   );
