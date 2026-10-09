@@ -1776,7 +1776,9 @@ function botPlayMC(hand,ls,tc,allWon,totals,myIdx,playLog,voids,budgetMs,maxDeal
   {const tcP=opts&&opts.tcP;
    const tenC=vld.find(c=>c.suit==="♣"&&c.rank==="10");
    if(tcP&&tenC&&vld.length>1&&tc.length){
-     let h=(myIdx+11)|0;for(let p=0;p<4;p++){h=(Math.imul(h,31)+((totals[p]|0)+7919))|0;}h^=h>>>13;h=Math.imul(h,0x27d4eb2f);h^=h>>>15;
+     // per-game salt = the first card played this game (totals alone are all-0 in game 1 → fixed mode per seat)
+     const c0=(playLog.length?playLog[0]:tc[0]).card;
+     let h=(myIdx+11+RO[c0.rank]*4+SUITS.indexOf(c0.suit)*53)|0;for(let p=0;p<4;p++){h=(Math.imul(h,31)+((totals[p]|0)+7919))|0;}h^=h>>>13;h=Math.imul(h,0x27d4eb2f);h^=h>>>15;
      const u=((h>>>0)%1000)/1000,w0=tcP[0]||0,w1=tcP[1]||0,w2=tcP[2]||0,ws=(w0+w1+w2)||1;
      const mode=u<w0/ws?0:u<(w0+w1)/ws?1:2;
      if(mode>0){
